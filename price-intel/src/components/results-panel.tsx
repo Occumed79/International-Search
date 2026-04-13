@@ -342,8 +342,8 @@ function ResultCard({
 }
 
 // ─── Comparison Panel ───────────────────────────────────────────────────────
-function ComparePanel({ ids, results, onClose }: { ids: Set<number>; results: PriceResult[]; onClose: () => void }) {
-  const compared = results.filter((r) => ids.has(r.id));
+function ComparePanel({ ids, results, onClose }: { ids: Set<string>; results: PriceResult[]; onClose: () => void }) {
+  const compared = results.filter((r) => ids.has(String(r.id)));
   if (compared.length < 2) return null;
 
   return (
@@ -398,7 +398,7 @@ export function ResultsPanel({ response, isLoading }: { response: SearchResponse
   const exportMutation = useExportCsv();
   const { toast } = useToast();
   const [selectedProviderId, setSelectedProviderId] = useState<number | null>(null);
-  const [compareIds, setCompareIds] = useState<Set<number>>(new Set());
+  const [compareIds, setCompareIds] = useState<Set<string>>(new Set());
 
   const handleExport = () => {
     if (!response?.searchId) return;
@@ -411,7 +411,7 @@ export function ResultsPanel({ response, isLoading }: { response: SearchResponse
     );
   };
 
-  const toggleCompare = (id: number) => {
+  const toggleCompare = (id: string) => {
     const next = new Set(compareIds);
     if (next.has(id)) {
       next.delete(id);
@@ -499,11 +499,11 @@ export function ResultsPanel({ response, isLoading }: { response: SearchResponse
               ) : (
                 results.map((r) => (
                   <ResultCard
-                    key={r.id}
+                    key={String(r.id)}
                     result={r}
-                    onSelect={() => setSelectedProviderId(r.providerId)}
-                    isComparing={compareIds.has(r.id)}
-                    onToggleCompare={() => toggleCompare(r.id)}
+                    onSelect={() => { const pid = Number(r.providerId); if (pid && pid > 0) setSelectedProviderId(pid); }}
+                    isComparing={compareIds.has(String(r.id))}
+                    onToggleCompare={() => toggleCompare(String(r.id))}
                   />
                 ))
               )}
@@ -531,3 +531,4 @@ export function ResultsPanel({ response, isLoading }: { response: SearchResponse
     </>
   );
 }
+
