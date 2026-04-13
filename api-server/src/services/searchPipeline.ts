@@ -1,15 +1,13 @@
 /**
- * International Search Pipeline
- * Global Self-Pay Price Intelligence — Portal 5
+ * Surgical Search Pipeline — Portal 5
+ * Global Self-Pay Price Intelligence
  *
- * Sources used (in priority order):
- * A. US hospital machine-readable files (CMS / DoltHub)
- * B. Provider websites with explicit self-pay/cash pricing
- * C. Public PDFs, chargemasters, fee schedules
- * D. JSON-LD structured data on provider pages
- * E. NPPES for provider enrichment
- * F. Web search (Serper) as discovery layer
- * G. Tavily / Firecrawl for page extraction
+ * Architecture:
+ *   Layer 1 — Query Engineering  : build precision boolean queries per engine
+ *   Layer 2 — Multi-Engine Search: Serper (Google) + Exa (neural) in parallel
+ *   Layer 3 — Deep Extraction    : Tavily + Jina extracts full page text
+ *   Layer 4 — LLM Adjudication  : Groq/Llama rejects noise, extracts only exact prices
+ *   Layer 5 — Persist            : upsert to DB for instant future hits
  */
 
 import { db } from "@workspace/db";
@@ -17,15 +15,14 @@ import { providersTable, pricesTable, crawlLogsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { logger } from "../lib/logger";
 
-// ─── API Keys ─────────────────────────────────────────────────────────────────
 const SERPER_API_KEY    = process.env.SERPER_API_KEY;
 const TAVILY_API_KEY    = process.env.TAVILY_API_KEY;
 const FIRECRAWL_API_KEY = process.env.FIRECRAWL_API_KEY;
 const EXA_API_KEY       = process.env.EXA_API_KEY;
 const GROQ_API_KEY      = process.env.GROQ_API_KEY;
 const OPENROUTER_KEY    = process.env.OPENROUTER_KEY ?? process.env.OPENROUTER_API_KEY;
+const JINA_API_KEY      = process.env.JINA_API_KEY;
 
-// ─── Types ────────────────────────────────────────────────────────────────────
 export interface SearchParams {
   query: string;
   country?: string;
@@ -47,9 +44,12 @@ interface SearchHit {
   url: string;
   title: string;
   snippet: string;
+  score?: number;
+  hasPageContent?: boolean;
+  pageContent?: string;
 }
 
-interface ExtractedPrice {
+export interface ExtractedPrice {
   providerName: string;
   organizationName?: string;
   providerType: string;
@@ -76,41 +76,44 @@ interface ExtractedPrice {
   confidenceScore: number;
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-const TIMEOUT_MS = 10_000;
+const TIMEOUT_MS = 12_000;
 
-const SKIP_DOMAINS = [
+const SKIP_DOMAINS = new Set([
   "webmd.com", "healthline.com", "verywellhealth.com", "mayoclinic.org",
   "wikipedia.org", "reddit.com", "quora.com", "yelp.com", "healthgrades.com",
   "vitals.com", "ratemds.com", "nytimes.com", "wsj.com", "forbes.com",
   "costhelper.com", "nerdwallet.com", "gobankingrates.com", "goodrx.com",
   "youtube.com", "facebook.com", "twitter.com", "x.com", "instagram.com",
-  "tiktok.com", "linkedin.com",
-];
+  "tiktok.com", "linkedin.com", "pinterest.com", "bing.com", "google.com",
+  "drugs.com", "rxlist.com", "medicinenet.com", "everydayhealth.com",
+  "health.com", "prevention.com", "sharecare.com", "zocdoc.com",
+]);
 
-const PRICE_URL_HINTS = [
+const PRICE_URL_SIGNALS = [
   "/self-pay", "/cash-price", "/cash-prices", "/pricing", "/fees",
-  "/fee-schedule", "/price-transparency", "/patient-pricing",
-  "/our-fees", "/service-fees", "/rates", "/transparency",
-  "/uninsured", "/no-insurance", "/affordable-care",
+  "/fee-schedule", "/price-transparency", "/patient-pricing", "/price-list",
+  "/our-fees", "/service-fees", "/rates", "/transparency", "/chargemaster",
+  "/uninsured", "/no-insurance", "/affordable-care", "/financial",
+  "/standard-charges", "/charge-description-master", "/cdm",
 ];
 
-// Country-specific search modifiers
-const COUNTRY_SEARCH_MODIFIERS: Record<string, string> = {
-  US: 'site:.com OR site:.org "self-pay" OR "cash price"',
-  GB: '"self-pay" OR "private fees" OR "out of pocket"',
-  CA: '"self-pay" OR "private rate" OR "uninsured"',
-  AU: '"out of pocket" OR "self-funded" OR "private fee"',
-  DE: '"Selbstzahler" OR "Privatpatient" OR "Privatpreis"',
-  FR: '"prix secteur libéral" OR "dépassement d\'honoraires"',
-  IN: '"package price" OR "cash payment" OR "self-pay"',
-  MX: '"precio particular" OR "sin seguro" OR "pago directo"',
-  TH: '"package price" OR "cash price" OR "self-pay"',
-  SG: '"self-pay" OR "out of pocket" OR "subsidised"',
-  DEFAULT: '"self-pay" OR "cash price" OR "out of pocket"',
+const COUNTRY_PRICE_TERMS: Record<string, string[]> = {
+  US:  ["self-pay price", "cash price", "posted price", "uninsured rate"],
+  GB:  ["self-pay fee", "private fee", "out of pocket", "self-funded"],
+  CA:  ["self-pay", "private rate", "uninsured", "out of pocket"],
+  AU:  ["out of pocket", "self-funded", "private fee", "gap fee"],
+  DE:  ["Selbstzahler", "Privatpatient", "Privatpreis", "IGel"],
+  FR:  ["secteur liberal", "depassement honoraires", "tarif conventionnel"],
+  IN:  ["package price", "cash payment", "self-pay", "OPD charges"],
+  MX:  ["precio particular", "sin seguro", "pago directo", "honorarios"],
+  TH:  ["package price", "cash price", "self-pay"],
+  SG:  ["self-pay", "out of pocket", "subsidised", "private rate"],
+  JP:  ["jifi", "jiyuu shinsatsu"],
+  BR:  ["particular", "sem plano", "preco particular"],
+  AE:  ["self-pay", "cash price", "private rate"],
+  DEFAULT: ["self-pay price", "cash price", "out of pocket", "posted price"],
 };
 
-// Currency by country
 const COUNTRY_CURRENCY: Record<string, string> = {
   US: "USD", GB: "GBP", CA: "CAD", AU: "AUD",
   DE: "EUR", FR: "EUR", IN: "INR", MX: "MXN",
@@ -118,34 +121,54 @@ const COUNTRY_CURRENCY: Record<string, string> = {
   TR: "TRY", ZA: "ZAR", AE: "AED",
 };
 
-// Price regex patterns (multi-currency aware)
+const SERPER_GL: Record<string, string> = {
+  US: "us", GB: "gb", CA: "ca", AU: "au",
+  DE: "de", FR: "fr", IN: "in", MX: "mx",
+  TH: "th", SG: "sg", JP: "jp", BR: "br",
+};
+
 const PRICE_PATTERNS = [
-  /\$\s*(\d[\d,]*(?:\.\d{1,2})?)/g,                          // USD $123
+  /\$\s*(\d[\d,]*(?:\.\d{1,2})?)/g,
   /USD\s*(\d[\d,]*(?:\.\d{1,2})?)/gi,
-  /£\s*(\d[\d,]*(?:\.\d{1,2})?)/g,                          // GBP
-  /€\s*(\d[\d,]*(?:\.\d{1,2})?)/g,                          // EUR
-  /₹\s*(\d[\d,]*(?:\.\d{1,2})?)/g,                          // INR
-  /¥\s*(\d[\d,]*(?:\.\d{1,2})?)/g,                          // JPY
-  /CA\$\s*(\d[\d,]*(?:\.\d{1,2})?)/gi,                      // CAD
-  /AU\$\s*(\d[\d,]*(?:\.\d{1,2})?)/gi,                      // AUD
-  /MXN\s*(\d[\d,]*(?:\.\d{1,2})?)/gi,                       // MXN
-  /SGD\s*(\d[\d,]*(?:\.\d{1,2})?)/gi,                       // SGD
-  /THB\s*(\d[\d,]*(?:\.\d{1,2})?)/gi,                       // THB
-  /(\d[\d,]*(?:\.\d{1,2})?)\s*(?:baht|฿)/gi,               // THB alt
+  /\u00a3\s*(\d[\d,]*(?:\.\d{1,2})?)/g,
+  /\u20ac\s*(\d[\d,]*(?:\.\d{1,2})?)/g,
+  /\u20b9\s*(\d[\d,]*(?:\.\d{1,2})?)/g,
+  /\u00a5\s*(\d[\d,]*(?:\.\d{1,2})?)/g,
+  /CA\$\s*(\d[\d,]*(?:\.\d{1,2})?)/gi,
+  /AU\$\s*(\d[\d,]*(?:\.\d{1,2})?)/gi,
+  /MXN\s*(\d[\d,]*(?:\.\d{1,2})?)/gi,
+  /SGD\s*(\d[\d,]*(?:\.\d{1,2})?)/gi,
+  /THB\s*(\d[\d,]*(?:\.\d{1,2})?)/gi,
   /price[:\s]+\$?(\d[\d,]*(?:\.\d{1,2})?)/gi,
   /cost[:\s]+\$?(\d[\d,]*(?:\.\d{1,2})?)/gi,
   /fee[:\s]+\$?(\d[\d,]*(?:\.\d{1,2})?)/gi,
-  /rate[:\s]+\$?(\d[\d,]*(?:\.\d{1,2})?)/gi,
-  /(\d[\d,]*(?:\.\d{1,2})?)\s*(?:per\s+)?(?:visit|session|procedure|test|exam)/gi,
 ];
 
 const PRICE_TYPE_KEYWORDS: Record<string, string[]> = {
   self_pay:        ["self-pay", "self pay", "uninsured", "without insurance", "no insurance"],
   cash_pay:        ["cash pay", "cash price", "cash only", "cash rate", "pay cash"],
-  discounted_cash: ["discounted cash", "cash discount", "discounted rate"],
-  bundled:         ["package", "bundle", "all-inclusive", "all inclusive"],
+  discounted_cash: ["discounted cash", "cash discount", "prompt pay"],
+  bundled:         ["package", "bundle", "all-inclusive"],
   fee_schedule:    ["fee schedule", "chargemaster", "standard charge", "price list"],
 };
+
+// ─── Layer 1: Surgical Query Engineering ─────────────────────────────────────
+function buildSurgicalQuery(
+  service: string,
+  country: string,
+  location?: string,
+  engine: "google" | "neural" = "google"
+): string {
+  const priceTerms = COUNTRY_PRICE_TERMS[country] ?? COUNTRY_PRICE_TERMS.DEFAULT;
+  const priceClause = `("${priceTerms[0]}" OR "${priceTerms[1]}")`;
+  const locClause = location ? `"${location}" ` : "";
+  const excludes = "-site:healthline.com -site:webmd.com -site:wikipedia.org -site:reddit.com -site:costhelper.com -site:goodrx.com -site:quora.com";
+
+  if (engine === "neural") {
+    return `${service} exact posted price ${priceTerms[0]} ${locClause}provider website`;
+  }
+  return `"${service}" ${locClause}${priceClause} ${excludes}`.trim();
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 async function fetchWithTimeout(url: string, init: RequestInit = {}, ms = TIMEOUT_MS): Promise<Response> {
@@ -160,8 +183,9 @@ async function fetchWithTimeout(url: string, init: RequestInit = {}, ms = TIMEOU
 
 function shouldSkipDomain(url: string): boolean {
   try {
-    const host = new URL(url).hostname.replace("www.", "");
-    return SKIP_DOMAINS.some((d) => host === d || host.endsWith("." + d));
+    const host = new URL(url).hostname.replace(/^www\./, "");
+    const base = host.split(".").slice(-2).join(".");
+    return SKIP_DOMAINS.has(host) || SKIP_DOMAINS.has(base);
   } catch {
     return false;
   }
@@ -170,21 +194,21 @@ function shouldSkipDomain(url: string): boolean {
 function hasPricingPath(url: string): boolean {
   try {
     const path = new URL(url).pathname.toLowerCase();
-    return PRICE_URL_HINTS.some((hint) => path.includes(hint));
+    return PRICE_URL_SIGNALS.some(hint => path.includes(hint));
   } catch {
     return false;
   }
 }
 
 function detectCurrency(text: string, country: string): string {
-  if (/£/.test(text)) return "GBP";
-  if (/€/.test(text)) return "EUR";
-  if (/₹/.test(text)) return "INR";
-  if (/¥/.test(text)) return "JPY";
+  if (/\u00a3/.test(text)) return "GBP";
+  if (/\u20ac/.test(text)) return "EUR";
+  if (/\u20b9/.test(text)) return "INR";
+  if (/\u00a5/.test(text)) return "JPY";
   if (/CA\$/i.test(text)) return "CAD";
   if (/AU\$/i.test(text)) return "AUD";
   if (/SGD/i.test(text)) return "SGD";
-  if (/THB|baht|฿/i.test(text)) return "THB";
+  if (/THB|baht/i.test(text)) return "THB";
   if (/MXN/i.test(text)) return "MXN";
   return COUNTRY_CURRENCY[country] ?? "USD";
 }
@@ -192,7 +216,7 @@ function detectCurrency(text: string, country: string): string {
 function detectPriceType(text: string): ExtractedPrice["priceType"] {
   const lower = text.toLowerCase();
   for (const [type, keywords] of Object.entries(PRICE_TYPE_KEYWORDS)) {
-    if (keywords.some((kw) => lower.includes(kw))) {
+    if (keywords.some(kw => lower.includes(kw))) {
       return type as ExtractedPrice["priceType"];
     }
   }
@@ -206,7 +230,6 @@ function extractPricesFromText(text: string): number[] {
     let m: RegExpExecArray | null;
     while ((m = pattern.exec(text)) !== null) {
       const val = parseFloat(m[1].replace(/,/g, ""));
-      // Sanity filter: between $5 and $500,000
       if (val >= 5 && val <= 500_000) prices.push(val);
     }
   }
@@ -215,30 +238,40 @@ function extractPricesFromText(text: string): number[] {
 
 function detectProviderType(text: string, url: string): string {
   const lower = (text + " " + url).toLowerCase();
-  if (/dental|dentist|orthodon/.test(lower)) return "dental";
-  if (/lab|laboratory|diagnostic|patholog/.test(lower)) return "lab";
-  if (/imaging|radiol|mri|ct scan|x.?ray|ultrasound/.test(lower)) return "imaging_center";
-  if (/urgent care|walk.?in|minute clinic|fastmed/.test(lower)) return "urgent_care";
+  if (/dental|dentist|orthodon|periodon/.test(lower)) return "dental";
+  if (/\blab\b|laboratory|diagnostic|patholog|quest diagnostics|labcorp/.test(lower)) return "lab";
+  if (/imaging|radiol|mri\b|ct scan|x.?ray|ultrasound|mammogram/.test(lower)) return "imaging_center";
+  if (/urgent care|walk.?in|minute clinic|fastmed|concentra/.test(lower)) return "urgent_care";
   if (/hospital|medical center|health system/.test(lower)) return "hospital";
-  if (/telehealth|virtual|online consult/.test(lower)) return "telehealth";
+  if (/telehealth|virtual|telemedicine|online consult/.test(lower)) return "telehealth";
   return "clinic";
 }
 
-function computeConfidence(hit: SearchHit, extractedPrices: number[]): number {
-  let score = 0.5;
-  if (extractedPrices.length > 0) score += 0.2;
-  if (hasPricingPath(hit.url)) score += 0.15;
-  const lower = hit.snippet.toLowerCase();
-  if (/self.?pay|cash.?price|posted.?price|fee schedule/.test(lower)) score += 0.1;
-  if (/estimate|typical|average|range|about/.test(lower)) score -= 0.15;
-  if (/blog|article|guide|news/.test(hit.url.toLowerCase())) score -= 0.2;
-  return Math.min(Math.max(score, 0.1), 1.0);
+function scoreSurgicalRelevance(hit: SearchHit, query: string): number {
+  let score = 0.4;
+  const lowerUrl = hit.url.toLowerCase();
+  const lowerSnippet = hit.snippet.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+
+  if (/\$\d|\u00a3\d|\u20ac\d|\u20b9\d/.test(hit.snippet)) score += 0.30;
+  if (hasPricingPath(hit.url)) score += 0.20;
+  if (/self.?pay|cash.?price|posted.?price|fee.?schedule/.test(lowerSnippet)) score += 0.15;
+  if (hit.hasPageContent) score += 0.10;
+
+  const queryWords = lowerQuery.split(/\s+/).filter(w => w.length > 3);
+  const urlMatches = queryWords.filter(w => lowerUrl.includes(w)).length;
+  score += urlMatches * 0.05;
+
+  if (/blog|article|guide|news|learn|about|what-is|how-to/.test(lowerUrl)) score -= 0.20;
+  if (/estimate|typical|average|range|about \$|around \$/.test(lowerSnippet)) score -= 0.15;
+  if (/insurance|covered|copay|deductible/.test(lowerSnippet)) score -= 0.10;
+
+  return Math.min(Math.max(score, 0.05), 1.0);
 }
 
-function extractProviderNameFromText(text: string, url: string): string {
-  // Try to get the domain name as a fallback provider name
+function extractProviderNameFromDomain(url: string): string {
   try {
-    const host = new URL(url).hostname.replace("www.", "").split(".")[0];
+    const host = new URL(url).hostname.replace(/^www\./, "").split(".")[0];
     return host.charAt(0).toUpperCase() + host.slice(1).replace(/-/g, " ");
   } catch {
     return "Unknown Provider";
@@ -246,97 +279,109 @@ function extractProviderNameFromText(text: string, url: string): string {
 }
 
 function extractCityFromText(text: string): string | undefined {
-  // Simple: look for "in [City], [State/Country]" pattern
   const m = text.match(/\bin\s+([A-Z][a-z]+(?: [A-Z][a-z]+)?),\s*([A-Z]{2,})/);
   return m ? m[1] : undefined;
 }
 
-// ─── Web Search (Serper) ──────────────────────────────────────────────────────
+// ─── Layer 2a: Serper — Google Search with surgical boolean query ─────────────
 async function searchSerper(query: string, country: string, location?: string): Promise<SearchHit[]> {
   if (!SERPER_API_KEY) {
-    logger.warn("SERPER_API_KEY not set — skipping Serper");
+    logger.warn("SERPER_API_KEY not set");
     return [];
   }
-
-  const countryMod = COUNTRY_SEARCH_MODIFIERS[country] ?? COUNTRY_SEARCH_MODIFIERS.DEFAULT;
-  const locMod = location ? `"${location}"` : "";
-  const finalQuery = `${query} ${locMod} ${countryMod} -site:healthline.com -site:webmd.com -site:wikipedia.org`.trim();
+  const surgicalQuery = buildSurgicalQuery(query, country, location, "google");
+  const gl = SERPER_GL[country] ?? "us";
 
   try {
-    const res = await fetchWithTimeout(
-      "https://google.serper.dev/search",
-      {
-        method: "POST",
-        headers: { "X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json" },
-        body: JSON.stringify({ q: finalQuery, num: 10, gl: country?.toLowerCase() || "us" }),
-      }
-    );
+    const res = await fetchWithTimeout("https://google.serper.dev/search", {
+      method: "POST",
+      headers: { "X-API-KEY": SERPER_API_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({ q: surgicalQuery, num: 10, gl }),
+    });
     if (!res.ok) throw new Error(`Serper ${res.status}`);
     const data = await res.json() as { organic?: Array<{ link: string; title: string; snippet: string }> };
-    return (data.organic ?? []).map((r) => ({ url: r.link, title: r.title, snippet: r.snippet }));
+    logger.info({ engine: "serper", query: surgicalQuery, count: data.organic?.length }, "Serper results");
+    return (data.organic ?? []).map(r => ({ url: r.link, title: r.title, snippet: r.snippet ?? "" }));
   } catch (err) {
-    logger.warn({ err }, "Serper search failed");
+    logger.warn({ err }, "Serper failed");
     return [];
   }
 }
 
-// ─── Tavily Extract ───────────────────────────────────────────────────────────
-async function extractWithTavily(urls: string[], query: string): Promise<Array<{ url: string; content: string }>> {
-  if (!TAVILY_API_KEY || urls.length === 0) return [];
+// ─── Layer 2b: Exa — Neural semantic search with inline content ───────────────
+async function searchExa(query: string, country: string, location?: string): Promise<SearchHit[]> {
+  if (!EXA_API_KEY) return [];
+  const surgicalQuery = buildSurgicalQuery(query, country, location, "neural");
 
   try {
-    const res = await fetchWithTimeout(
-      "https://api.tavily.com/extract",
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${TAVILY_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ urls: urls.slice(0, 5) }),
-      },
-      15_000
-    );
+    const res = await fetchWithTimeout("https://api.exa.ai/search", {
+      method: "POST",
+      headers: { "x-api-key": EXA_API_KEY, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: surgicalQuery,
+        numResults: 10,
+        type: "neural",
+        useAutoprompt: true,
+        contents: {
+          text: { maxCharacters: 3000 },
+          highlights: { numSentences: 3, highlightsPerUrl: 2, query: `${query} price cost fee` },
+        },
+      }),
+    });
+    if (!res.ok) throw new Error(`Exa ${res.status}`);
+    const data = await res.json() as {
+      results?: Array<{ url: string; title: string; text?: string; highlights?: string[]; score?: number }>;
+    };
+    logger.info({ engine: "exa", count: data.results?.length }, "Exa results");
+    return (data.results ?? []).map(r => {
+      const pageContent = r.text ?? r.highlights?.join(" ") ?? "";
+      return {
+        url: r.url,
+        title: r.title ?? "",
+        snippet: r.highlights?.[0] ?? r.text?.slice(0, 200) ?? "",
+        score: r.score,
+        hasPageContent: pageContent.length > 100,
+        pageContent,
+      };
+    });
+  } catch (err) {
+    logger.warn({ err }, "Exa failed");
+    return [];
+  }
+}
+
+// ─── Layer 3a: Tavily — Full page extraction (JS-rendered) ───────────────────
+async function extractWithTavily(urls: string[], query: string): Promise<Array<{ url: string; content: string }>> {
+  if (!TAVILY_API_KEY || urls.length === 0) return [];
+  try {
+    const res = await fetchWithTimeout("https://api.tavily.com/extract", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${TAVILY_API_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ urls: urls.slice(0, 6) }),
+    }, 20_000);
     if (!res.ok) throw new Error(`Tavily ${res.status}`);
     const data = await res.json() as { results?: Array<{ url: string; raw_content: string }> };
-    return (data.results ?? []).map((r) => ({ url: r.url, content: r.raw_content ?? "" }));
+    return (data.results ?? []).map(r => ({ url: r.url, content: r.raw_content ?? "" }));
   } catch (err) {
     logger.warn({ err }, "Tavily extract failed");
     return [];
   }
 }
 
-// ─── Exa Search ──────────────────────────────────────────────────────────────
-async function searchExa(query: string, country: string): Promise<SearchHit[]> {
-  if (!EXA_API_KEY) return [];
-
+// ─── Layer 3b: Jina Reader — Free fallback extractor ─────────────────────────
+async function extractWithJina(url: string): Promise<string> {
   try {
-    const res = await fetchWithTimeout(
-      "https://api.exa.ai/search",
-      {
-        method: "POST",
-        headers: { "x-api-key": EXA_API_KEY, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          query: `${query} self-pay price posted`,
-          numResults: 8,
-          type: "neural",
-          includeDomains: [],
-          useAutoprompt: true,
-          contents: { text: { maxCharacters: 2000 } },
-        }),
-      }
-    );
-    if (!res.ok) throw new Error(`Exa ${res.status}`);
-    const data = await res.json() as { results?: Array<{ url: string; title: string; text?: string }> };
-    return (data.results ?? []).map((r) => ({
-      url: r.url,
-      title: r.title,
-      snippet: (r.text ?? "").slice(0, 400),
-    }));
-  } catch (err) {
-    logger.warn({ err }, "Exa search failed");
-    return [];
+    const headers: Record<string, string> = { "Accept": "text/plain" };
+    if (JINA_API_KEY) headers["Authorization"] = `Bearer ${JINA_API_KEY}`;
+    const res = await fetchWithTimeout(`https://r.jina.ai/${url}`, { headers }, 15_000);
+    if (!res.ok) return "";
+    return (await res.text()).slice(0, 8000);
+  } catch {
+    return "";
   }
 }
 
-// ─── LLM Price Extraction ─────────────────────────────────────────────────────
+// ─── Layer 4: LLM Adjudication — strict price extraction ─────────────────────
 async function extractWithLLM(
   pageContent: string,
   serviceQuery: string,
@@ -344,117 +389,116 @@ async function extractWithLLM(
   country: string
 ): Promise<Partial<ExtractedPrice> | null> {
   const key = OPENROUTER_KEY ?? GROQ_API_KEY;
+  if (!key) return null;
+
   const endpoint = OPENROUTER_KEY
     ? "https://openrouter.ai/api/v1/chat/completions"
     : "https://api.groq.com/openai/v1/chat/completions";
-  const model = OPENROUTER_KEY ? "google/gemini-flash-1.5" : "llama3-8b-8192";
 
-  if (!key || !pageContent) return null;
+  const model = OPENROUTER_KEY
+    ? "meta-llama/llama-3.3-70b-instruct"
+    : "llama-3.3-70b-versatile";
 
-  const snippet = pageContent.slice(0, 3000);
+  const content = pageContent.slice(0, 6000);
+  const currency = COUNTRY_CURRENCY[country] ?? "USD";
 
-  const prompt = `You are a healthcare price extraction specialist. Analyze this page content and extract ONLY explicitly posted self-pay or cash prices for the service "${serviceQuery}".
+  const systemPrompt = `You are a medical price extraction specialist. Extract ONLY exact posted self-pay or cash prices from provider websites.
 
-RULES:
-- Only extract prices that are literally stated on the page (not estimates, ranges, or "call for pricing")
-- If no exact price is found, respond with: {"found": false}
-- Include the exact text evidence that shows the price
+STRICT RULES:
+1. ONLY extract if the price is explicitly posted on this specific provider page
+2. REJECT: estimates, ranges like "$100-$200", national averages, insurance prices, copays, blog content, aggregator data
+3. REJECT if not specifically for the queried service
+4. Return valid JSON or the exact string "null" — no other output`;
 
-PAGE URL: ${sourceUrl}
+  const userPrompt = `SERVICE: "${serviceQuery}"
+URL: ${sourceUrl}
+COUNTRY: ${country}
+
 PAGE CONTENT:
-${snippet}
+${content}
 
-Respond with JSON only:
-{
-  "found": true,
-  "providerName": "...",
-  "exactPrice": 123.45,
-  "currency": "USD",
-  "priceType": "self_pay|cash_pay|discounted_cash|bundled|fee_schedule",
-  "serviceNormalized": "...",
-  "billingCode": "..." or null,
-  "evidenceText": "exact quote from the page",
-  "city": "...",
-  "stateRegion": "...",
-  "country": "${country}",
-  "phone": "..." or null,
-  "confidenceScore": 0.0-1.0
-}`;
+If this page has an exact posted ${country === "US" ? "self-pay/cash" : "out-of-pocket"} price for "${serviceQuery}" from a real provider, return:
+{"providerName":"...","city":"...","stateRegion":"...","country":"${country}","phone":"...","normalizedService":"...","billingCode":"...","exactPrice":123.00,"currency":"${currency}","priceType":"self_pay","evidenceText":"exact quote","verificationStatus":"verified_exact_posted_price","confidenceScore":0.9}
+
+Otherwise return: null`;
 
   try {
-    const res = await fetchWithTimeout(
-      endpoint,
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model,
-          messages: [{ role: "user", content: prompt }],
-          temperature: 0,
-          max_tokens: 512,
-          response_format: { type: "json_object" },
-        }),
+    const res = await fetchWithTimeout(endpoint, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+        ...(OPENROUTER_KEY ? { "HTTP-Referer": "https://international-search.onrender.com" } : {}),
       },
-      12_000
-    );
-    if (!res.ok) throw new Error(`LLM ${res.status}`);
-    const data = await res.json() as { choices?: Array<{ message: { content: string } }> };
-    const raw = data.choices?.[0]?.message?.content ?? "{}";
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.0,
+        max_tokens: 400,
+        response_format: { type: "json_object" },
+      }),
+    }, 20_000);
+
+    if (!res.ok) return null;
+    const data = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
+    const raw = data.choices?.[0]?.message?.content?.trim();
+    if (!raw || raw === "null") return null;
+
     const parsed = JSON.parse(raw);
-    if (!parsed.found || !parsed.exactPrice) return null;
+    if (!parsed?.exactPrice || parsed.exactPrice <= 0) return null;
+
     return {
       providerName: parsed.providerName,
-      normalizedService: parsed.serviceNormalized ?? serviceQuery,
-      billingCode: parsed.billingCode,
-      exactPrice: Number(parsed.exactPrice),
-      currency: parsed.currency ?? COUNTRY_CURRENCY[country] ?? "USD",
-      priceType: parsed.priceType ?? "self_pay",
-      evidenceText: parsed.evidenceText,
       city: parsed.city,
       stateRegion: parsed.stateRegion,
       country: parsed.country ?? country,
       phone: parsed.phone,
+      normalizedService: parsed.normalizedService ?? serviceQuery,
+      billingCode: parsed.billingCode,
+      exactPrice: Number(parsed.exactPrice),
+      currency: parsed.currency ?? currency,
+      priceType: parsed.priceType ?? "self_pay",
+      evidenceText: parsed.evidenceText,
+      verificationStatus: parsed.verificationStatus ?? "likely_exact_price_needs_review",
       confidenceScore: Math.min(Math.max(Number(parsed.confidenceScore ?? 0.7), 0), 1),
-      verificationStatus: "verified_exact_posted_price",
     };
   } catch (err) {
-    logger.warn({ err }, "LLM extraction failed");
+    logger.warn({ err, url: sourceUrl }, "LLM extraction failed");
     return null;
   }
 }
 
-// ─── Upsert provider + price to DB ───────────────────────────────────────────
+// ─── Upsert provider + price ──────────────────────────────────────────────────
 async function upsertResult(extracted: ExtractedPrice): Promise<void> {
-  // Find or create provider
+  const websiteKey = extracted.website ?? extracted.sourceUrl;
   const [existing] = await db
     .select({ id: providersTable.id })
     .from(providersTable)
-    .where(eq(providersTable.website, extracted.website ?? extracted.sourceUrl))
+    .where(eq(providersTable.website, websiteKey))
     .limit(1);
 
   let providerId: number;
-
   if (existing) {
     providerId = existing.id;
   } else {
-    const [prov] = await db
-      .insert(providersTable)
-      .values({
-        name: extracted.providerName,
-        organizationName: extracted.organizationName,
-        providerType: extracted.providerType,
-        specialty: extracted.specialty,
-        address: extracted.address,
-        city: extracted.city,
-        stateRegion: extracted.stateRegion,
-        postalCode: extracted.postalCode,
-        country: extracted.country,
-        latitude: extracted.latitude,
-        longitude: extracted.longitude,
-        phone: extracted.phone,
-        website: extracted.website ?? extracted.sourceUrl,
-      })
-      .returning({ id: providersTable.id });
+    const [prov] = await db.insert(providersTable).values({
+      name: extracted.providerName,
+      organizationName: extracted.organizationName,
+      providerType: extracted.providerType,
+      specialty: extracted.specialty,
+      address: extracted.address,
+      city: extracted.city,
+      stateRegion: extracted.stateRegion,
+      postalCode: extracted.postalCode,
+      country: extracted.country,
+      latitude: extracted.latitude,
+      longitude: extracted.longitude,
+      phone: extracted.phone,
+      website: websiteKey,
+    }).returning({ id: providersTable.id });
     providerId = prov.id;
   }
 
@@ -476,120 +520,126 @@ async function upsertResult(extracted: ExtractedPrice): Promise<void> {
 
 // ─── Main Pipeline ────────────────────────────────────────────────────────────
 export async function runInternationalSearch(params: SearchParams): Promise<void> {
-  const {
-    query,
-    country = "",
-    city,
-    cashPayOnly,
-    hospitalOnly,
-    clinicOnly,
-    imagingOnly,
-    labOnly,
-    urgentCareOnly,
-    dentalOnly,
-    telehealthOnly,
-  } = params;
+  const { query, country = "US", city } = params;
+  const logPrefix = `[surgical] query="${query}" country="${country}"`;
+  logger.info(logPrefix + " starting");
 
-  const logPrefix = `[intl-search] query="${query}" country="${country}"`;
-  logger.info(logPrefix + " — starting pipeline");
-
-  let hits: SearchHit[] = [];
-
-  // 1. Parallel discovery
+  // Layer 2: Parallel multi-engine search
   const [serperHits, exaHits] = await Promise.all([
-    searchSerper(query, country || "US", city),
-    searchExa(query, country || "US"),
+    searchSerper(query, country, city),
+    searchExa(query, country, city),
   ]);
 
-  hits = [...serperHits, ...exaHits];
+  // Merge + deduplicate
+  const allHitsMap = new Map<string, SearchHit>();
+  for (const hit of [...serperHits, ...exaHits]) {
+    if (!allHitsMap.has(hit.url)) allHitsMap.set(hit.url, hit);
+  }
 
-  // 2. Filter
-  const filteredHits = hits.filter((h) => !shouldSkipDomain(h.url));
-
-  // 3. Score and prioritize URLs with pricing path hints
-  const scored = filteredHits
-    .map((h) => ({ hit: h, score: computeConfidence(h, []) + (hasPricingPath(h.url) ? 0.2 : 0) }))
+  // Surgical scoring + filter
+  const scored = Array.from(allHitsMap.values())
+    .filter(h => !shouldSkipDomain(h.url))
+    .map(h => ({ hit: h, score: scoreSurgicalRelevance(h, query) }))
     .sort((a, b) => b.score - a.score)
-    .slice(0, 8)
-    .map((s) => s.hit);
+    .slice(0, 10);
 
-  // 4. Extract page content
-  const extracted = await extractWithTavily(scored.map((h) => h.url), query);
+  logger.info({ count: scored.length, topUrls: scored.slice(0, 3).map(s => s.hit.url) }, logPrefix + " scored");
 
-  // 5. LLM extraction per page
+  // Layer 3: Extract content — use inline content from Exa where available
+  const withContent: Array<{ url: string; content: string }> = [];
+  const needsExtraction: string[] = [];
+
+  for (const { hit } of scored) {
+    if (hit.hasPageContent && (hit.pageContent?.length ?? 0) > 200) {
+      withContent.push({ url: hit.url, content: hit.pageContent! });
+    } else {
+      needsExtraction.push(hit.url);
+    }
+  }
+
+  const tavilyResults = await extractWithTavily(needsExtraction, query);
+  const tavilyGot = new Set(tavilyResults.map(r => r.url));
+
+  // Jina fallback for URLs Tavily missed
+  const jinaUrls = needsExtraction.filter(url => !tavilyGot.has(url)).slice(0, 3);
+  const jinaResults = (
+    await Promise.all(jinaUrls.map(async url => {
+      const content = await extractWithJina(url);
+      return content.length > 100 ? { url, content } : null;
+    }))
+  ).filter((r): r is { url: string; content: string } => r !== null);
+
+  const allPageContent = [...withContent, ...tavilyResults, ...jinaResults];
+
+  // Layer 4: LLM adjudication
   const results: ExtractedPrice[] = [];
-
-  for (const page of extracted) {
+  for (const page of allPageContent) {
     try {
-      const hit = scored.find((h) => h.url === page.url) ?? { url: page.url, title: "", snippet: "" };
-
-      // Fast price check before expensive LLM call
-      const quickPrices = extractPricesFromText(page.content.slice(0, 2000));
+      // Fast pre-filter — no price pattern = skip LLM (saves tokens)
+      const quickPrices = extractPricesFromText(page.content.slice(0, 3000));
       if (quickPrices.length === 0 && !hasPricingPath(page.url)) continue;
 
-      const llmResult = await extractWithLLM(page.content, query, page.url, country || "US");
+      const llmResult = await extractWithLLM(page.content, query, page.url, country);
+      if (!llmResult?.exactPrice) continue;
 
-      if (llmResult && llmResult.exactPrice) {
-        // Filter by facility type if requested
-        const pType = detectProviderType(page.content.slice(0, 500), page.url);
-        if (hospitalOnly && pType !== "hospital") continue;
-        if (clinicOnly && pType !== "clinic") continue;
-        if (imagingOnly && pType !== "imaging_center") continue;
-        if (labOnly && pType !== "lab") continue;
-        if (urgentCareOnly && pType !== "urgent_care") continue;
-        if (dentalOnly && pType !== "dental") continue;
-        if (telehealthOnly && pType !== "telehealth") continue;
+      const providerType = detectProviderType(page.content.slice(0, 1000), page.url);
+      const { hospitalOnly, clinicOnly, imagingOnly, labOnly, urgentCareOnly, dentalOnly, telehealthOnly, cashPayOnly } = params;
 
-        const full: ExtractedPrice = {
-          providerName: llmResult.providerName ?? extractProviderNameFromText(page.content, page.url),
-          providerType: pType,
-          city: llmResult.city ?? extractCityFromText(hit.snippet),
-          stateRegion: llmResult.stateRegion,
-          country: llmResult.country ?? country ?? "US",
-          phone: llmResult.phone,
-          website: page.url,
-          serviceQuery: query,
-          normalizedService: llmResult.normalizedService ?? query,
-          billingCode: llmResult.billingCode,
-          exactPrice: llmResult.exactPrice,
-          currency: llmResult.currency ?? detectCurrency(page.content, country ?? "US"),
-          priceType: llmResult.priceType ?? detectPriceType(page.content),
-          evidenceText: llmResult.evidenceText,
-          sourceUrl: page.url,
-          sourceType: hit.url.includes("dolthub") ? "dolthub"
-            : hit.url.endsWith(".pdf") ? "pdf_price_sheet"
-            : /\.gov/.test(hit.url) ? "cms_dataset"
-            : "provider_website",
-          verificationStatus: llmResult.verificationStatus ?? "likely_exact_price_needs_review",
-          confidenceScore: llmResult.confidenceScore ?? 0.7,
-        };
+      if (hospitalOnly && providerType !== "hospital") continue;
+      if (clinicOnly && providerType !== "clinic") continue;
+      if (imagingOnly && providerType !== "imaging_center") continue;
+      if (labOnly && providerType !== "lab") continue;
+      if (urgentCareOnly && providerType !== "urgent_care") continue;
+      if (dentalOnly && providerType !== "dental") continue;
+      if (telehealthOnly && providerType !== "telehealth") continue;
 
-        if (cashPayOnly && !["self_pay", "cash_pay", "discounted_cash"].includes(full.priceType)) continue;
+      const priceType = llmResult.priceType ?? detectPriceType(page.content);
+      if (cashPayOnly && !["self_pay", "cash_pay", "discounted_cash"].includes(priceType)) continue;
 
-        results.push(full);
-      }
+      const sourceType = page.url.endsWith(".pdf") ? "pdf_price_sheet"
+        : /\.gov/.test(page.url) ? "cms_dataset"
+        : "provider_website";
+
+      const hitSnippet = scored.find(s => s.hit.url === page.url)?.hit.snippet ?? "";
+
+      results.push({
+        providerName: llmResult.providerName ?? extractProviderNameFromDomain(page.url),
+        providerType,
+        city: llmResult.city ?? extractCityFromText(hitSnippet),
+        stateRegion: llmResult.stateRegion,
+        country: llmResult.country ?? country,
+        phone: llmResult.phone,
+        website: page.url,
+        serviceQuery: query,
+        normalizedService: llmResult.normalizedService ?? query,
+        billingCode: llmResult.billingCode,
+        exactPrice: llmResult.exactPrice,
+        currency: llmResult.currency ?? detectCurrency(page.content, country),
+        priceType,
+        evidenceText: llmResult.evidenceText,
+        sourceUrl: page.url,
+        sourceType,
+        verificationStatus: llmResult.verificationStatus ?? "likely_exact_price_needs_review",
+        confidenceScore: llmResult.confidenceScore ?? 0.7,
+      });
+
+      logger.info({ provider: results[results.length - 1].providerName, price: llmResult.exactPrice }, logPrefix + " extracted");
     } catch (err) {
-      logger.warn({ err, url: page.url }, "Page extraction error");
+      logger.warn({ err, url: page.url }, "Extraction error");
     }
   }
 
-  // 6. Persist results
+  // Layer 5: Persist
   let persisted = 0;
   for (const r of results) {
-    try {
-      await upsertResult(r);
-      persisted++;
-    } catch (err) {
-      logger.warn({ err }, "Failed to persist result");
-    }
+    try { await upsertResult(r); persisted++; } catch (err) { logger.warn({ err }, "Persist failed"); }
   }
 
-  // 7. Log crawl
   await db.insert(crawlLogsTable).values({
-    connectorName: `intl-web-search:${country || "global"}`,
+    connectorName: `surgical:${country}`,
     status: persisted > 0 ? "success" : "no_results",
     recordsIngested: persisted,
   });
 
-  logger.info(`${logPrefix} — pipeline complete. Persisted ${persisted}/${results.length} results`);
+  logger.info({ persisted, total: results.length, serper: serperHits.length, exa: exaHits.length }, logPrefix + " done");
 }
