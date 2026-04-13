@@ -22,7 +22,7 @@ async function queryDoltHub(serviceQuery: string, state?: string): Promise<LiveR
     const likeQuery = serviceQuery.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim();
     const stateFilter = state ? ` AND hospital_state = '${state.toUpperCase().slice(0,2)}'` : "";
     const sql_query = encodeURIComponent(
-      `SELECT hospital_name, hospital_state, hospital_city, code, code_type, payer_name, standard_charge_negotiated_dollar, standard_charge_discoUNTED_cash, setting
+      `SELECT hospital_name, hospital_state, hospital_city, code, code_type, payer_name, standard_charge_negotiated_dollar, standard_charge_discounted_cash, setting
        FROM hospital_price_transparency.cms_aggregated_prices
        WHERE (description LIKE '%${likeQuery}%' OR code LIKE '%${likeQuery.replace(/\s+/g,"%")}%')
        ${stateFilter}
@@ -432,18 +432,16 @@ router.post("/search", async (req, res): Promise<void> => {
     ...npiResults.filter(r => r.exactPrice === 0), // providers without prices — show separately
   ];
 
-  // Filter out NPI zero-price records if we have real prices
-  const hasRealPrices = dbFormatted.length > 0 || doltResults.length > 0 || cmsResults.length > 0;
-  const filteredLive = hasRealPrices
-    ? liveResults.filter(r => r.exactPrice > 0)
-    : liveResults;
+  // Separate results with prices from no-price provider records
+  const liveWithPrices = liveResults.filter(r => r.exactPrice > 0);
+  const npiNoPrice = npiResults.filter(r => r.exactPrice === 0);
 
-  // Apply cash/type filter to live results
+  // Apply cash/type filter to priced live results
   const finalLive = cashPayOnly
-    ? filteredLive.filter(r => ["self_pay","cash_pay","discounted_cash"].includes(r.priceType))
-    : filteredLive;
+    ? liveWithPrices.filter(r => ["self_pay","cash_pay","discounted_cash"].includes(r.priceType))
+    : liveWithPrices;
 
-  // Merge DB results + live results, DB results first, dedupe by sourceUrl
+  // Merge DB results + live results (with prices), DB results first, dedupe by sourceUrl+service
   const seen = new Set<string>();
   const allResults = [...dbFormatted, ...finalLive].filter(r => {
     const key = `${r.sourceUrl}-${r.normalizedService}`;
@@ -452,9 +450,8 @@ router.post("/search", async (req, res): Promise<void> => {
     return true;
   });
 
-  const nopriceProviders = hasRealPrices
-    ? npiResults.filter(r => r.exactPrice === 0).slice(0, 10)
-    : [];
+  // Always show NPI providers in the "no posted price" section (up to 10)
+  const nopriceProviders = npiNoPrice.slice(0, 10);
 
   const total = allResults.length + (countResult[0]?.count ?? 0);
 
@@ -523,3 +520,4 @@ router.get("/search/history", async (req, res): Promise<void> => {
 });
 
 export default router;
+
