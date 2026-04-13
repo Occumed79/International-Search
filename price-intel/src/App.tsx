@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -10,6 +11,17 @@ import { History } from "@/pages/history";
 import { Admin } from "@/pages/admin";
 
 const queryClient = new QueryClient();
+
+function DarkModeProvider({ children }: { children: React.ReactNode }) {
+  useEffect(() => {
+    // Apply dark class to <html> so all dark: variants and portals/dropdowns work correctly
+    document.documentElement.classList.add("dark");
+    return () => {
+      document.documentElement.classList.remove("dark");
+    };
+  }, []);
+  return <>{children}</>;
+}
 
 function Router() {
   return (
@@ -29,13 +41,12 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        {/* Force dark mode globally for the cinematic glass aesthetic */}
-        <div className="dark contents">
+        <DarkModeProvider>
           <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
             <Router />
           </WouterRouter>
           <Toaster />
-        </div>
+        </DarkModeProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );
