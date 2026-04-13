@@ -410,17 +410,25 @@ STRICT RULES:
 3. REJECT if not specifically for the queried service
 4. Return valid JSON or the exact string "null" — no other output`;
 
-  const userPrompt = `SERVICE: "${serviceQuery}"
-URL: ${sourceUrl}
+  const userPrompt = `SERVICE SEARCHED: "${serviceQuery}"
+SOURCE URL: ${sourceUrl}
 COUNTRY: ${country}
 
 PAGE CONTENT:
 ${content}
 
-If this page has an exact posted ${country === "US" ? "self-pay/cash" : "out-of-pocket"} price for "${serviceQuery}" from a real provider, return:
-{"providerName":"...","city":"...","stateRegion":"...","country":"${country}","phone":"...","normalizedService":"...","billingCode":"...","exactPrice":123.00,"currency":"${currency}","priceType":"self_pay","evidenceText":"exact quote","verificationStatus":"verified_exact_posted_price","confidenceScore":0.9}
+TASK: Find ONE exact posted ${country === "US" ? "self-pay/cash" : "out-of-pocket"} price for "${serviceQuery}" on this specific provider page.
 
-Otherwise return: null`;
+RULES:
+- exactPrice must be a single number, not a range
+- If page lists multiple services, pick the one MOST relevant to "${serviceQuery}"
+- If page shows no exact price, return null
+- Never invent or estimate a price
+
+If found, return ONLY this JSON (no extra text):
+{"providerName":"exact name","city":"city or null","stateRegion":"2-letter state or null","country":"${country}","phone":"phone or null","normalizedService":"clean service name","billingCode":"CPT code or null","exactPrice":123.00,"currency":"${currency}","priceType":"self_pay","evidenceText":"exact quote from page showing this price","verificationStatus":"verified_exact_posted_price","confidenceScore":0.9}
+
+Otherwise return exactly: null`;
 
   try {
     const res = await fetchWithTimeout(endpoint, {
@@ -643,3 +651,4 @@ export async function runInternationalSearch(params: SearchParams): Promise<void
 
   logger.info({ persisted, total: results.length, serper: serperHits.length, exa: exaHits.length }, logPrefix + " done");
 }
+
