@@ -28,7 +28,6 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/api", router);
 
 // Resolve frontend dist relative to the repo root (process.cwd())
-// Works whether running from repo root or api-server/
 const possiblePaths = [
   path.resolve(process.cwd(), "price-intel/dist/public"),
   path.resolve(process.cwd(), "../price-intel/dist/public"),
@@ -39,7 +38,8 @@ const staticDir = possiblePaths.find((p) => fs.existsSync(p));
 if (staticDir) {
   logger.info({ staticDir }, "Serving frontend static files");
   app.use(express.static(staticDir));
-  app.get("*", (_req, res) => {
+  // Express 5 requires named wildcard params — use regex instead
+  app.get(/.*/, (_req, res) => {
     res.sendFile(path.join(staticDir, "index.html"));
   });
 } else {
