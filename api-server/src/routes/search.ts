@@ -6,6 +6,8 @@ import {
   GetSearchSuggestionsQueryParams,
   GetSearchHistoryQueryParams,
 } from "@workspace/api-zod";
+import { runInternationalSearch } from "../services/searchPipeline";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -16,8 +18,31 @@ router.post("/search", async (req, res): Promise<void> => {
     return;
   }
 
-  const { query, country, state, city, providerType, cashPayOnly, hospitalOnly, clinicOnly, imagingOnly, labOnly, urgentCareOnly, dentalOnly, telehealthOnly, page, pageSize } = parsed.data;
+  const {
+    query, country, state, city, providerType,
+    cashPayOnly, hospitalOnly, clinicOnly, imagingOnly,
+    labOnly, urgentCareOnly, dentalOnly, telehealthOnly,
+    page, pageSize,
+  } = parsed.data;
 
+  // Kick off the live search pipeline asynchronously
+  setImmediate(() => {
+    runInternationalSearch({
+      query,
+      country: country ?? "",
+      city,
+      cashPayOnly,
+      hospitalOnly,
+      clinicOnly,
+      imagingOnly,
+      labOnly,
+      urgentCareOnly,
+      dentalOnly,
+      telehealthOnly,
+    }).catch((err: unknown) => logger.error({ err }, "International search pipeline error"));
+  });
+
+  // Query existing DB results immediately (pipeline fills in more over time)
   const conditions = [];
   const searchPattern = `%${query}%`;
 
@@ -36,13 +61,13 @@ router.post("/search", async (req, res): Promise<void> => {
   if (city) conditions.push(ilike(providersTable.city, `%${city}%`));
 
   if (providerType) conditions.push(eq(providersTable.providerType, providerType));
-  if (hospitalOnly) conditions.push(eq(providersTable.providerType, "hospital"));
-  if (clinicOnly) conditions.push(eq(providersTable.providerType, "clinic"));
-  if (imagingOnly) conditions.push(eq(providersTable.providerType, "imaging_center"));
-  if (labOnly) conditions.push(eq(providersTable.providerType, "lab"));
-  if (urgentCareOnly) conditions.push(eq(providersTable.providerType, "urgent_care"));
-  if (dentalOnly) conditions.push(eq(providersTable.providerType, "dental"));
-  if (telehealthOnly) conditions.push(eq(providersTable.providerType, "telehealth"));
+  if (hospitalOnly)  conditions.push(eq(providersTable.providerType, "hospital"));
+  if (clinicOnly)    conditions.push(eq(providersTable.providerType, "clinic"));
+  if (imagingOnly)   conditions.push(eq(providersTable.providerType, "imaging_center"));
+  if (labOnly)       conditions.push(eq(providersTable.providerType, "lab"));
+  if (urgentCareOnly)conditions.push(eq(providersTable.providerType, "urgent_care"));
+  if (dentalOnly)    conditions.push(eq(providersTable.providerType, "dental"));
+  if (telehealthOnly)conditions.push(eq(providersTable.providerType, "telehealth"));
 
   if (cashPayOnly) {
     conditions.push(
@@ -55,7 +80,6 @@ router.post("/search", async (req, res): Promise<void> => {
   }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
-
   const offsetVal = ((page ?? 1) - 1) * (pageSize ?? 25);
 
   const results = await db
@@ -114,7 +138,7 @@ router.post("/search", async (req, res): Promise<void> => {
 
   res.json({
     results: formattedResults,
-    nopriceProviders: [],
+    nopriceProviders: [],  // populated once no-price tracking is fully wired
     total,
     page: page ?? 1,
     pageSize: pageSize ?? 25,
@@ -147,8 +171,8 @@ router.get("/search/suggestions", async (req, res): Promise<void> => {
 
   const suggestions = services.map((s) => ({
     text: s.normalizedService,
+    billingCode: s.billingCode,
     category: "service",
-    cptCode: s.billingCode,
   }));
 
   res.json(suggestions);
