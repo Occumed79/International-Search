@@ -1,0 +1,1 @@
+{"version":3,"file":"connectorStatus.d.ts","sourceRoot":"","sources":["../../../src/generated/types/connectorStatus.ts"],"names":[],"mappings":"AAAA;;;;;;GAMG;AAEH,MAAM,WAAW,eAAe;IAC9B,IAAI,EAAE,MAAM,CAAC;IACb,MAAM,EAAE,MAAM,CAAC;IACf,gBAAgB;IAChB,OAAO,CAAC,EAAE,MAAM,GAAG,IAAI,CAAC;IACxB,eAAe,EAAE,MAAM,CAAC;CACzB"}
