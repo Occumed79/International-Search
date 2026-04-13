@@ -1,0 +1,288 @@
+
+
+Build a production-style web portal called Global Self-Pay Price Intelligence.
+
+Core mission:
+Create a search engine that finds actual posted out-of-pocket healthcare prices for specific services across the United States and internationally. This portal must prioritize real posted prices found on the public web or in public machine-readable pricing files. Do not return estimates, generic ranges, “typical cost” content, insurance-derived approximations, or AI-invented pricing. If an exact posted price is not found, say so clearly and do not fabricate one.
+
+Design requirement:
+The entire portal must use a premium Apple macOS Tahoe glass aesthetic. The UI should feel luminous, ultra-polished, layered, translucent, and high-end, with frosted glass panels, glowing depth, soft reflections, subtle blur, elegant transparency, and rich lighting. It should feel cinematic and intelligent, like a next-generation search console built inside a luminous glass operating system. Prioritize a bright, glassy, extra-luminous interface rather than a flat or generic dashboard look.
+
+Product vision:
+Create a cinematic intelligence database for healthcare self-pay pricing. Users should be able to search for any healthcare service and see matching clinics, hospitals, labs, imaging centers, urgent cares, dental offices, pharmacies, specialist practices, and other providers that publicly post actual cash-pay or self-pay pricing.
+
+Primary requirements:
+1. Search globally and in the United States.
+2. Show results on an interactive world map and also in a dense intelligence-style results panel.
+3. Every result must include source-backed evidence of the posted price.
+4. The system must distinguish between:
+   - exact posted self-pay price
+   - exact posted discounted cash price
+   - bundled package price
+   - posted fee schedule item
+   - non-qualifying source
+5. Only qualifying price evidence should be surfaced as a valid result.
+6. The app must support searching by:
+   - service name
+   - CPT/HCPCS code when available
+   - specialty
+   - provider/facility name
+   - city/state/country
+   - radius
+   - provider category
+7. Include strong filtering for:
+   - country
+   - U.S. state
+   - city
+   - distance radius
+   - provider type
+   - service type
+   - cash-pay only
+   - hospital only
+   - clinic only
+   - imaging only
+   - lab only
+   - urgent care only
+   - dental only
+   - telehealth if posted
+8. Support a detail view for each provider showing:
+   - provider/facility name
+   - location
+   - map
+   - exact price found
+   - currency
+   - billing code if found
+   - price context
+   - source URL
+   - source snippet
+   - timestamp found
+   - confidence classification based on evidence quality, not guesswork
+
+Critical sourcing rules:
+Prioritize exact public price sources in this order:
+A. U.S. hospital price transparency machine-readable files, especially discounted cash price fields
+B. Public provider websites with explicit self-pay/cash pricing
+C. Public PDFs, chargemasters, fee schedules, price lists, menus, and brochures
+D. Structured metadata like JSON-LD if it contains actual price data
+E. Public healthcare directories and provider registries for enrichment only, not for invented pricing
+F. Common Crawl only as a discovery/indexing layer
+G. Search APIs and sitemap/robots discovery as crawl assistance
+
+Do not treat the following as final prices:
+- blog articles quoting ranges
+- generic cost guides
+- insurance negotiated estimates unless clearly labeled as self-pay cash price
+- pages that only say call for pricing
+- AI-generated guesses
+- SEO junk pages with no direct provider evidence
+
+Use and integrate these data sources intelligently:
+
+United States:
+- NPPES NPI Registry for provider and organization lookup
+- CMS Data datasets
+- CMS Care Compare for facility enrichment
+- CMS hospital price transparency machine-readable files and compliance resources
+- robots.txt and sitemap.xml discovery
+- JSON-LD extraction on provider pages
+- Common Crawl CDX API for discovery only
+- PDF/table extraction libraries for public price sheets and MRF-linked files
+
+International:
+- public provider websites
+- public clinic and hospital fee schedules
+- public diagnostics and lab menus
+- public radiology and imaging pricing pages
+- public dental fee pages
+- public pharmacy vaccination and travel clinic pricing pages
+- structured web extraction from provider websites, PDFs, tables, and downloadable public documents
+- multilingual search and extraction support where possible
+
+Exact source URLs to prioritize or evaluate:
+
+Primary public-data and discovery sources:
+- NPPES / NPI Registry
+- CMS Data
+- CMS Care Compare
+- CMS hospital machine-readable transparency files
+- robots.txt and sitemap.xml
+- JSON-LD on provider websites
+- Common Crawl CDX API
+- local PDF/table extraction tools
+
+- DoltHub hospital price transparency repositories:
+  - https://www.dolthub.com/repositories/dolthub/hospital-price-transparency
+  - https://www.dolthub.com/repositories/dolthub/hospital-price-transparency-v3
+  - https://www.dolthub.com/repositories/dolthub/standard-charge-files
+  - https://www.dolthub.com/repositories/dolthub/hospital-prices-allpayers
+  - https://www.dolthub.com/repositories/dolthub/transparency-in-coverage
+  - https://www.dolthub.com/repositories/dolthub/transparency-in-pricing
+- DoltHub discover page:
+  - https://www.dolthub.com/discover
+- Serif Health APIs:
+  - https://www.serifhealth.com/products/apis
+  - https://app.serifhealth.com/docs
+- Metriport:
+  - https://www.metriport.com/
+  - https://docs.metriport.com/medical-api/api-tools/open-api
+- H1 / Ribbon:
+  - https://h1.co/
+  - https://h1.co/blog/ribbon-health-and-h1-merging-missions-to-transform-healthcare/
+
+- Use DoltHub as a serious U.S. source for hospital transparency backfill, SQL-style exploration, normalization, reconciliation, and debugging.
+Serif Health APIs for care navigation, provider search, and transparency analytics,
+-  Metriport  enrichment and healthcare data infrastructure, not a primary pricing source.
+-  H1 / Ribbon as provider-data-quality and provider-directory enrichment
+- Build the portal first around exact public evidence from CMS transparency files, provider websites, PDFs, HTML tables, JSON-LD, sitemap/robots discovery, NPPES, and CMS enrichment.
+- Design the architecture so optional commercial sources can be added later as modular connectors.
+
+Search engine behavior:
+When a user searches for a service, the system should:
+1. Normalize the query into likely variants, synonyms, plain-English forms, billing code candidates, and international wording variants.
+2. Discover providers and facilities likely to offer the service.
+3. Search only for publicly posted exact prices.
+4. Score candidate evidence based on source quality.
+5. Return only results with direct evidence.
+6. Show non-price matches in a separate “found provider but no posted price” section.
+
+Example searches:
+- MRI brain without contrast
+- treadmill stress test
+- chest x-ray 2 view
+- FAA physical
+- DOT physical
+- QuantiFERON blood test
+- dental exam with bitewings
+- mammogram
+- travel vaccines
+- colonoscopy self-pay
+- CBC lab panel
+- echocardiogram
+- occupational medicine exam
+- urgent care visit
+-Gallbladder ultrasound 
+
+Map and UI requirements:
+- interactive world map with clustering
+- click a result to open provider intelligence drawer
+- satellite/map hybrid option when possible
+- results list should feel like a classified intelligence terminal, not a bland directory
+- include source badges like:
+  - Hospital MRF
+  - Provider Website
+  - PDF Price Sheet
+  - CMS Dataset
+  - Public Registry
+  - DoltHub
+- include side-by-side result comparison
+- include export to CSV and PDF
+- include saved provider bookmarks
+- include search history
+- use the luminous Apple macOS Tahoe glass visual language throughout the full app
+
+Architecture requirements:
+Build this as a modular portal with connector-based ingestion. Each source type should have its own connector so the system can expand over time.
+
+Required modules:
+- query normalization engine
+- provider discovery engine
+- public web search and discovery layer
+- source fetcher
+- price evidence extractor
+- structured parser for JSON, HTML, PDF, and table data
+- deduplication engine
+- result ranking engine
+- map visualization layer
+- export layer
+- admin diagnostics panel
+
+Result ranking logic:
+Higher priority:
+- exact cash or self-pay price on provider website
+- discounted cash price in hospital MRF
+- exact fee schedule line item
+- exact CPT-linked or service-linked price
+
+Lower priority:
+- vague service mention with no price
+- generic article with ranges
+- facility known to offer service but no actual posted price
+
+Data model:
+Each result record should include:
+- provider_id
+- provider_name
+- organization_name
+- provider_type
+- specialty
+- service_query
+- normalized_service
+- billing_code
+- exact_price
+- currency
+- price_type
+- evidence_text
+- source_url
+- source_type
+- country
+- state_region
+- city
+- postal_code
+- latitude
+- longitude
+- phone
+- website
+- timestamp_found
+- verification_status
+
+Verification statuses:
+- verified_exact_posted_price
+- likely_exact_price_needs_review
+- provider_found_no_price
+- rejected_non_qualifying_source
+
+Technical requirements:
+- build on Replit
+- use a clean full-stack structure
+- make the backend modular and connector-driven
+- use server-side scraping and parsing pipelines
+- cache aggressively
+- respect robots.txt where applicable
+- implement rate limiting and retry logic
+- build for maintainability and future expansion
+- avoid hardcoded one-off scrapers whenever possible
+- create a clear admin panel showing:
+  - crawl health
+  - source hit rate
+  - extraction success rate
+  - rejected results
+  - stale results
+  - broken sources
+
+For the first working version, prioritize:
+1. U.S. hospitals with actual discounted cash prices from machine-readable files
+2. U.S. provider websites with explicit self-pay pricing
+3. common imaging, lab, urgent care, and dental services
+4. international provider websites that publish actual fee pages
+5. strong evidence extraction and source citation per result
+
+Important guardrails:
+- never show estimated prices as exact prices
+- never invent or infer a price that is not explicitly posted
+- never summarize ranges as final result prices
+- clearly separate exact prices from non-price provider matches
+- optimize for factuality over volume
+- optimize for real posted cash-pay intelligence, not generic healthcare SEO
+
+Deliverables:
+- a polished working portal
+- a searchable global map
+- a results grid
+- provider detail pages
+- source evidence display
+- export tools
+- admin diagnostics
+- modular source connector architecture
+- documentation explaining how each source is used and how exact-price qualification works
+
+Build the app with a premium, high-intelligence, cinematic aesthetic while keeping it highly usable, fast, and visually luminous.
