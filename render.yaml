@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: international-search
+    runtime: node
+    rootDir: .
+    buildCommand: npm install -g pnpm && pnpm install --no-frozen-lockfile && pnpm --filter @workspace/db push && NODE_ENV=production pnpm --filter @workspace/price-intel build && pnpm --filter @workspace/api-server build
+    startCommand: node --enable-source-maps ./api-server/dist/index.mjs
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: international-search-db
+          property: connectionString
+      # Search pipeline keys — set in Render dashboard
+      - key: SERPER_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: EXA_API_KEY
+        sync: false
+      - key: FIRECRAWL_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: OPENROUTER_KEY
+        sync: false
+      - key: JINA_API_KEY
+        sync: false
+      # Hub URL for back-navigation
+      - key: VITE_HUB_URL
+        value: https://price-search-tool.onrender.com
+
+databases:
+  - name: international-search-db
+    databaseName: international_search
+    user: international_search
+    plan: free
