@@ -3,7 +3,7 @@ services:
     name: international-search
     runtime: node
     rootDir: .
-    buildCommand: npm install -g pnpm && pnpm install --no-frozen-lockfile && pnpm --filter @workspace/db push && BASE_PATH=/ NODE_ENV=production pnpm --filter @workspace/price-intel build && pnpm --filter @workspace/api-server build
+    buildCommand: npm install -g pnpm && pnpm install --no-frozen-lockfile && (PORT=10000 BASE_PATH=/ NODE_ENV=production pnpm --filter @workspace/db push || echo "DB push skipped") && PORT=10000 BASE_PATH=/ NODE_ENV=production pnpm --filter @workspace/price-intel build && pnpm --filter @workspace/api-server build
     startCommand: node --enable-source-maps ./api-server/dist/index.mjs
     envVars:
       - key: NODE_ENV
@@ -14,7 +14,6 @@ services:
         value: /
       - key: DATABASE_URL
         sync: false
-      # Search pipeline keys — set in Render dashboard
       - key: SERPER_API_KEY
         sync: false
       - key: TAVILY_API_KEY
@@ -29,6 +28,5 @@ services:
         sync: false
       - key: JINA_API_KEY
         sync: false
-      # Hub URL for back-navigation
       - key: VITE_HUB_URL
         value: https://price-search-tool.onrender.com
