@@ -2,38 +2,413 @@ import { useState } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Download, ChevronRight, FileText, CheckCircle2, AlertTriangle, ShieldAlert, Building, MapPin, Scale, ExternalLink, Shield } from "lucide-react";
+import {
+  Download, ChevronRight, FileText, CheckCircle2, AlertTriangle,
+  ShieldAlert, Building, MapPin, Scale, ExternalLink, Shield,
+  Database, Globe, Landmark, Microscope, FileSearch, X, SplitSquareHorizontal,
+  Star, Info
+} from "lucide-react";
 import type { SearchResponse, PriceResult } from "@workspace/api-client-react";
 import { useExportCsv, useGetProvider, useGetProviderPrices, useCreateBookmark } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription, DrawerFooter, DrawerClose } from "@/components/ui/drawer";
+import {
+  Drawer, DrawerContent, DrawerHeader, DrawerTitle,
+  DrawerDescription, DrawerFooter, DrawerClose,
+} from "@/components/ui/drawer";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { format } from "date-fns";
 
-export function ResultsPanel({ response, isLoading }: { response: SearchResponse | undefined, isLoading: boolean }) {
-  const exportMutation = useExportCsv();
+// ─── Source badge config ────────────────────────────────────────────────────
+const SOURCE_BADGES: Record<string, { label: string; icon: React.ElementType; color: string }> = {
+  hospital_mrf:     { label: "Hospital MRF",      icon: Landmark,    color: "bg-blue-500/10 text-blue-600 border-blue-500/20" },
+  provider_website: { label: "Provider Website",  icon: Globe,       color: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" },
+  pdf_price_sheet:  { label: "PDF Price Sheet",   icon: FileText,    color: "bg-amber-500/10 text-amber-600 border-amber-500/20" },
+  cms_dataset:      { label: "CMS Dataset",       icon: Database,    color: "bg-purple-500/10 text-purple-600 border-purple-500/20" },
+  dolthub:          { label: "DoltHub",           icon: Database,    color: "bg-indigo-500/10 text-indigo-600 border-indigo-500/20" },
+  public_registry:  { label: "Public Registry",   icon: Shield,      color: "bg-slate-500/10 text-slate-600 border-slate-500/20" },
+  json_ld:          { label: "JSON-LD",           icon: FileSearch,  color: "bg-teal-500/10 text-teal-600 border-teal-500/20" },
+  lab_menu:         { label: "Lab Menu",          icon: Microscope,  color: "bg-rose-500/10 text-rose-600 border-rose-500/20" },
+};
+
+const PRICE_TYPE_CONFIG: Record<string, { label: string; color: string }> = {
+  self_pay:        { label: "Self-Pay",        color: "bg-emerald-500/10 text-emerald-700 border-emerald-500/30" },
+  cash_pay:        { label: "Cash Pay",        color: "bg-green-500/10 text-green-700 border-green-500/30" },
+  discounted_cash: { label: "Discounted Cash", color: "bg-blue-500/10 text-blue-700 border-blue-500/30" },
+  bundled:         { label: "Bundle Package",  color: "bg-violet-500/10 text-violet-700 border-violet-500/30" },
+  fee_schedule:    { label: "Fee Schedule",    color: "bg-amber-500/10 text-amber-700 border-amber-500/30" },
+};
+
+const VERIFICATION_CONFIG: Record<string, { label: string; icon: React.ElementType; color: string }> = {
+  verified_exact_posted_price: { label: "Verified Exact Price",    icon: CheckCircle2, color: "text-emerald-600" },
+  likely_exact_price_needs_review: { label: "Likely Exact — Needs Review", icon: AlertTriangle, color: "text-amber-600" },
+  provider_found_no_price:     { label: "Provider — No Posted Price", icon: Info, color: "text-blue-500" },
+  rejected_non_qualifying_source: { label: "Rejected",             icon: ShieldAlert, color: "text-red-500" },
+};
+
+function formatCurrency(amount: number, currency = "USD") {
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 0 }).format(amount);
+  } catch {
+    return `${currency} ${amount.toFixed(2)}`;
+  }
+}
+
+function SourceBadge({ sourceType }: { sourceType: string }) {
+  const cfg = SOURCE_BADGES[sourceType] ?? { label: sourceType, icon: Globe, color: "bg-muted/50 text-muted-foreground border-border/40" };
+  const Icon = cfg.icon;
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${cfg.color}`}>
+      <Icon className="w-3 h-3" />
+      {cfg.label}
+    </span>
+  );
+}
+
+function PriceTypeBadge({ priceType }: { priceType: string }) {
+  const cfg = PRICE_TYPE_CONFIG[priceType] ?? { label: priceType, color: "bg-muted/50 text-muted-foreground border-border/40" };
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${cfg.color}`}>
+      {cfg.label}
+    </span>
+  );
+}
+
+function ConfidenceBar({ score }: { score: number }) {
+  const pct = Math.round(score * 100);
+  const color = pct >= 80 ? "bg-emerald-500" : pct >= 60 ? "bg-amber-500" : "bg-red-400";
+  return (
+    <div className="flex items-center gap-2">
+      <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
+        <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
+      </div>
+      <span className="text-xs font-mono text-muted-foreground w-8 text-right">{pct}%</span>
+    </div>
+  );
+}
+
+// ─── Provider Detail Drawer ─────────────────────────────────────────────────
+function ProviderDrawer({ providerId, open, onClose }: { providerId: number | null; open: boolean; onClose: () => void }) {
+  const { data: provider } = useGetProvider(
+    { id: providerId! },
+    { query: { enabled: !!providerId, queryKey: ["/api/providers", providerId] } }
+  );
+  const { data: prices } = useGetProviderPrices(
+    { id: providerId! },
+    { query: { enabled: !!providerId, queryKey: ["/api/providers", providerId, "prices"] } }
+  );
+  const bookmarkMutation = useCreateBookmark();
   const { toast } = useToast();
 
+  const handleBookmark = () => {
+    if (!providerId) return;
+    bookmarkMutation.mutate(
+      { data: { providerId } },
+      {
+        onSuccess: () => toast({ title: "Provider bookmarked ✓" }),
+        onError: () => toast({ title: "Failed to bookmark", variant: "destructive" }),
+      }
+    );
+  };
+
+  return (
+    <Drawer open={open} onClose={onClose}>
+      <DrawerContent className="glass-panel max-h-[90dvh] border-t border-border/40">
+        <DrawerHeader className="border-b border-border/40 pb-4">
+          <div className="flex items-start justify-between">
+            <div>
+              <DrawerTitle className="text-2xl font-bold">{provider?.name ?? "Loading…"}</DrawerTitle>
+              <DrawerDescription className="flex items-center gap-2 mt-1">
+                {provider && (
+                  <>
+                    <Badge variant="secondary">{provider.providerType}</Badge>
+                    {provider.specialty && <Badge variant="outline">{provider.specialty}</Badge>}
+                    <span className="text-muted-foreground flex items-center gap-1">
+                      <MapPin className="w-3 h-3" />
+                      {[provider.city, provider.stateRegion, provider.country].filter(Boolean).join(", ")}
+                    </span>
+                  </>
+                )}
+              </DrawerDescription>
+            </div>
+            <DrawerClose asChild>
+              <Button variant="ghost" size="icon" className="rounded-xl" onClick={onClose}>
+                <X className="w-4 h-4" />
+              </Button>
+            </DrawerClose>
+          </div>
+        </DrawerHeader>
+
+        <ScrollArea className="flex-1 overflow-auto">
+          <div className="p-6 space-y-6">
+            {provider && (
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                {provider.npi && (
+                  <div className="glass-panel p-3 rounded-xl">
+                    <div className="text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-1">NPI</div>
+                    <div className="font-mono">{provider.npi}</div>
+                  </div>
+                )}
+                {provider.phone && (
+                  <div className="glass-panel p-3 rounded-xl">
+                    <div className="text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-1">Phone</div>
+                    <div>{provider.phone}</div>
+                  </div>
+                )}
+                {provider.website && (
+                  <div className="glass-panel p-3 rounded-xl col-span-2">
+                    <div className="text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-1">Website</div>
+                    <a href={provider.website} target="_blank" rel="noopener noreferrer"
+                      className="text-primary hover:underline flex items-center gap-1 truncate">
+                      {provider.website} <ExternalLink className="w-3 h-3 shrink-0" />
+                    </a>
+                  </div>
+                )}
+                <div className="glass-panel p-3 rounded-xl">
+                  <div className="text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-1">Last Updated</div>
+                  <div>{provider.lastUpdated ? format(new Date(provider.lastUpdated), "MMM d, yyyy") : "—"}</div>
+                </div>
+                <div className="glass-panel p-3 rounded-xl">
+                  <div className="text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-1">Price Records</div>
+                  <div className="font-semibold text-primary">{provider.priceCount}</div>
+                </div>
+              </div>
+            )}
+
+            {prices && prices.length > 0 && (
+              <div className="space-y-3">
+                <h3 className="font-semibold text-sm uppercase tracking-wider text-muted-foreground">Posted Prices</h3>
+                {prices.map((p: PriceResult) => (
+                  <div key={p.id} className="glass-panel p-4 rounded-xl space-y-2 border border-border/40">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-semibold">{p.normalizedService || p.serviceQuery}</div>
+                        {p.billingCode && <div className="text-xs font-mono text-muted-foreground">CPT: {p.billingCode}</div>}
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-xl font-bold text-primary">{formatCurrency(p.exactPrice, p.currency)}</div>
+                        <PriceTypeBadge priceType={p.priceType} />
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <SourceBadge sourceType={p.sourceType} />
+                      {p.verificationStatus && (
+                        (() => {
+                          const cfg = VERIFICATION_CONFIG[p.verificationStatus];
+                          const Icon = cfg?.icon ?? CheckCircle2;
+                          return (
+                            <span className={`inline-flex items-center gap-1 text-xs font-medium ${cfg?.color ?? "text-muted-foreground"}`}>
+                              <Icon className="w-3 h-3" />
+                              {cfg?.label ?? p.verificationStatus}
+                            </span>
+                          );
+                        })()
+                      )}
+                    </div>
+                    <ConfidenceBar score={p.confidenceScore ?? 0.9} />
+                    {p.evidenceText && (
+                      <div className="text-xs text-muted-foreground bg-muted/30 rounded-lg p-2 italic line-clamp-2">
+                        "{p.evidenceText}"
+                      </div>
+                    )}
+                    {p.sourceUrl && (
+                      <a href={p.sourceUrl} target="_blank" rel="noopener noreferrer"
+                        className="text-xs text-primary hover:underline flex items-center gap-1">
+                        <ExternalLink className="w-3 h-3" />
+                        View source
+                      </a>
+                    )}
+                    <div className="text-xs text-muted-foreground">
+                      Found: {p.timestampFound ? format(new Date(p.timestampFound), "MMM d, yyyy HH:mm") : "—"}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </ScrollArea>
+
+        <DrawerFooter className="border-t border-border/40 pt-4 flex-row gap-2">
+          <Button onClick={handleBookmark} disabled={bookmarkMutation.isPending} variant="outline" className="flex-1">
+            <Star className="w-4 h-4 mr-2" />
+            Bookmark
+          </Button>
+          {provider?.website && (
+            <Button asChild className="flex-1">
+              <a href={provider.website} target="_blank" rel="noopener noreferrer">
+                <ExternalLink className="w-4 h-4 mr-2" />
+                Visit Provider
+              </a>
+            </Button>
+          )}
+        </DrawerFooter>
+      </DrawerContent>
+    </Drawer>
+  );
+}
+
+// ─── Result Card ────────────────────────────────────────────────────────────
+function ResultCard({
+  result,
+  onSelect,
+  isComparing,
+  onToggleCompare,
+}: {
+  result: PriceResult;
+  onSelect: () => void;
+  isComparing: boolean;
+  onToggleCompare: () => void;
+}) {
+  const verif = VERIFICATION_CONFIG[result.verificationStatus] ?? VERIFICATION_CONFIG["verified_exact_posted_price"];
+  const VerifIcon = verif.icon;
+
+  return (
+    <div
+      className={`glass-panel p-4 border transition-all duration-200 cursor-pointer group relative overflow-hidden ${
+        isComparing
+          ? "border-primary/40 ring-1 ring-primary/20"
+          : "border-border/40 hover:border-primary/20 hover:shadow-lg"
+      }`}
+      onClick={onSelect}
+    >
+      <div className="absolute top-0 right-0 w-20 h-20 bg-primary/3 rounded-full blur-2xl group-hover:bg-primary/8 transition-colors pointer-events-none" />
+
+      <div className="relative z-10 space-y-3">
+        {/* Header */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h3 className="font-bold text-sm leading-tight truncate group-hover:text-primary transition-colors">
+              {result.providerName}
+            </h3>
+            <div className="flex items-center gap-1 mt-0.5 text-xs text-muted-foreground">
+              <MapPin className="w-3 h-3 shrink-0" />
+              <span className="truncate">
+                {[result.city, result.stateRegion, result.country].filter(Boolean).join(", ")}
+              </span>
+            </div>
+          </div>
+          <div className="text-right shrink-0">
+            <div className="text-lg font-bold text-primary">
+              {formatCurrency(result.exactPrice, result.currency)}
+            </div>
+            <PriceTypeBadge priceType={result.priceType} />
+          </div>
+        </div>
+
+        {/* Service */}
+        <div className="text-sm font-medium text-foreground/80">
+          {result.normalizedService || result.serviceQuery}
+          {result.billingCode && (
+            <span className="ml-2 text-xs font-mono text-muted-foreground">· {result.billingCode}</span>
+          )}
+        </div>
+
+        {/* Badges row */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          <SourceBadge sourceType={result.sourceType} />
+          <span className={`inline-flex items-center gap-1 text-xs font-medium ${verif.color}`}>
+            <VerifIcon className="w-3 h-3" />
+            {verif.label}
+          </span>
+        </div>
+
+        {/* Confidence + actions */}
+        <div className="space-y-2">
+          <ConfidenceBar score={result.confidenceScore ?? 0.9} />
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              className={`text-xs font-medium px-2.5 py-1 rounded-lg border transition-colors ${
+                isComparing
+                  ? "bg-primary/10 text-primary border-primary/30"
+                  : "text-muted-foreground border-border/40 hover:border-primary/30 hover:text-primary"
+              }`}
+              onClick={(e) => { e.stopPropagation(); onToggleCompare(); }}
+            >
+              <SplitSquareHorizontal className="w-3 h-3 inline mr-1" />
+              {isComparing ? "Remove" : "Compare"}
+            </button>
+            <button
+              type="button"
+              className="flex items-center gap-1 text-xs text-primary hover:underline"
+              onClick={onSelect}
+            >
+              Intelligence <ChevronRight className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Comparison Panel ───────────────────────────────────────────────────────
+function ComparePanel({ ids, results, onClose }: { ids: Set<number>; results: PriceResult[]; onClose: () => void }) {
+  const compared = results.filter((r) => ids.has(r.id));
+  if (compared.length < 2) return null;
+
+  return (
+    <div className="glass-panel border border-primary/20 p-4 rounded-2xl space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="font-semibold text-sm flex items-center gap-2">
+          <SplitSquareHorizontal className="w-4 h-4 text-primary" />
+          Comparing {compared.length} providers
+        </h3>
+        <Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg" onClick={onClose}>
+          <X className="w-3.5 h-3.5" />
+        </Button>
+      </div>
+      <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${compared.length}, 1fr)` }}>
+        {compared.map((r) => (
+          <div key={r.id} className="space-y-2 text-xs">
+            <div className="font-bold text-sm truncate">{r.providerName}</div>
+            <div className="text-xl font-bold text-primary">{formatCurrency(r.exactPrice, r.currency)}</div>
+            <PriceTypeBadge priceType={r.priceType} />
+            <SourceBadge sourceType={r.sourceType} />
+            <ConfidenceBar score={r.confidenceScore ?? 0.9} />
+            <div className="text-muted-foreground">{[r.city, r.country].filter(Boolean).join(", ")}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── No-Price Provider Row ───────────────────────────────────────────────────
+function NoPriceRow({ provider }: { provider: { providerName: string; city?: string; country?: string; website?: string } }) {
+  return (
+    <div className="flex items-center justify-between py-2.5 px-3 rounded-xl bg-muted/20 border border-border/20 text-sm">
+      <div className="min-w-0">
+        <div className="font-medium truncate">{provider.providerName}</div>
+        <div className="text-xs text-muted-foreground">{[provider.city, provider.country].filter(Boolean).join(", ")}</div>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <span className="text-xs text-muted-foreground italic">No posted price</span>
+        {provider.website && (
+          <a href={provider.website} target="_blank" rel="noopener noreferrer" className="text-primary">
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main ResultsPanel ───────────────────────────────────────────────────────
+export function ResultsPanel({ response, isLoading }: { response: SearchResponse | undefined; isLoading: boolean }) {
+  const exportMutation = useExportCsv();
+  const { toast } = useToast();
   const [selectedProviderId, setSelectedProviderId] = useState<number | null>(null);
   const [compareIds, setCompareIds] = useState<Set<number>>(new Set());
 
   const handleExport = () => {
     if (!response?.searchId) return;
-    
-    exportMutation.mutate({ data: { searchId: response.searchId, format: 'csv' } }, {
-      onSuccess: () => {
-        toast({
-          title: "Export Initialized",
-          description: "Your CSV is being generated and will download shortly.",
-        });
-      },
-      onError: () => {
-        toast({
-          title: "Export Failed",
-          description: "Unable to generate CSV at this time.",
-          variant: "destructive"
-        });
+    exportMutation.mutate(
+      { data: { searchId: response.searchId, format: "csv" } },
+      {
+        onSuccess: () => toast({ title: "Export ready", description: "CSV is being generated." }),
+        onError: () => toast({ title: "Export failed", variant: "destructive" }),
       }
-    });
+    );
   };
 
   const toggleCompare = (id: number) => {
@@ -42,7 +417,7 @@ export function ResultsPanel({ response, isLoading }: { response: SearchResponse
       next.delete(id);
     } else {
       if (next.size >= 3) {
-        toast({ title: "Comparison limit reached", description: "You can compare up to 3 providers at once." });
+        toast({ title: "Comparison limit", description: "Max 3 providers." });
         return;
       }
       next.add(id);
@@ -54,379 +429,105 @@ export function ResultsPanel({ response, isLoading }: { response: SearchResponse
     return (
       <div className="glass-panel h-full w-full flex flex-col overflow-hidden border border-border/40 shadow-xl">
         <div className="p-4 border-b border-border/40 shrink-0">
-          <div className="h-6 w-32 bg-muted rounded-md animate-pulse"></div>
+          <div className="h-6 w-48 bg-muted rounded-lg animate-pulse" />
         </div>
-        <div className="flex-1 p-4 space-y-4">
-          {[1,2,3,4,5].map(i => (
-            <div key={i} className="h-36 rounded-2xl bg-muted/30 animate-pulse border border-border/20"></div>
+        <div className="flex-1 p-4 space-y-3">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="glass-panel h-36 animate-pulse bg-muted/20" />
           ))}
         </div>
       </div>
     );
   }
 
-  if (!response || (response.results.length === 0 && response.nopriceProviders.length === 0)) {
-    return (
-      <div className="glass-panel h-full w-full flex flex-col items-center justify-center text-center p-8 border border-border/40 shadow-xl">
-        <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
-          <SearchIcon />
-        </div>
-        <h3 className="text-lg font-semibold mb-2">No Intelligence Found</h3>
-        <p className="text-muted-foreground text-sm max-w-[250px]">
-          We couldn't locate posted prices for this query matching your filters.
-        </p>
-      </div>
-    );
-  }
+  if (!response) return null;
 
-  const comparingResults = response.results.filter(r => compareIds.has(r.id));
+  const results = response.results ?? [];
+  const noPrice = response.nopriceProviders ?? [];
 
   return (
     <>
-      <div className="glass-panel h-full w-full flex flex-col overflow-hidden border border-border/40 shadow-xl bg-white/40 dark:bg-black/40">
-        
+      <div className="glass-panel h-full w-full flex flex-col overflow-hidden border border-border/40 shadow-xl">
         {/* Header */}
-        <div className="p-4 border-b border-border/40 bg-white/40 dark:bg-black/40 backdrop-blur-xl shrink-0 flex justify-between items-center z-10">
-          <div>
-            <div className="font-semibold text-lg flex items-center gap-2">
-              {response.total} Results
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 font-mono font-normal">
-                QID-{response.searchId}
-              </Badge>
+        <div className="p-4 border-b border-border/40 shrink-0 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="font-bold text-base">
+                {results.length} Price Intelligence Results
+              </h2>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Query: <span className="font-mono text-primary">{response.queryNormalized}</span>
+                {" · "}Page {response.page}/{Math.ceil(response.total / response.pageSize)} of {response.total.toLocaleString()}
+              </p>
             </div>
-            <div className="text-xs text-muted-foreground truncate max-w-[200px] mt-0.5">
-              "{response.queryNormalized}"
-            </div>
+            <Button variant="outline" size="sm" className="gap-2 rounded-xl" onClick={handleExport} disabled={exportMutation.isPending}>
+              <Download className="w-4 h-4" />
+              CSV
+            </Button>
           </div>
-          
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="h-8 text-xs font-medium glass-button gap-1.5"
-            onClick={handleExport}
-            disabled={exportMutation.isPending}
-          >
-            <Download className="w-3.5 h-3.5" />
-            Export CSV
-          </Button>
+
+          {compareIds.size >= 2 && (
+            <ComparePanel
+              ids={compareIds}
+              results={results}
+              onClose={() => setCompareIds(new Set())}
+            />
+          )}
         </div>
-        
-        {/* Scrollable Results */}
-        <ScrollArea className="flex-1 p-3">
-          <div className="space-y-3 pb-6">
-            
-            {/* Compare Drawer Trigger if comparing */}
-            {compareIds.size > 0 && (
-              <div className="bg-primary/10 border border-primary/20 rounded-xl p-3 flex items-center justify-between animate-in slide-in-from-top-2">
-                <div className="flex items-center gap-2 text-sm font-semibold text-primary">
-                  <Scale className="w-4 h-4" />
-                  {compareIds.size} selected for comparison
+
+        {/* Results */}
+        <ScrollArea className="flex-1">
+          <Tabs defaultValue="prices" className="h-full">
+            <TabsList className="mx-4 mt-3 mb-0 w-auto bg-muted/40 rounded-xl">
+              <TabsTrigger value="prices" className="rounded-lg text-xs">
+                Prices ({results.length})
+              </TabsTrigger>
+              {noPrice.length > 0 && (
+                <TabsTrigger value="noprice" className="rounded-lg text-xs">
+                  No Price ({noPrice.length})
+                </TabsTrigger>
+              )}
+            </TabsList>
+
+            <TabsContent value="prices" className="mt-0 p-4 space-y-3">
+              {results.length === 0 ? (
+                <div className="glass-panel p-10 text-center border border-border/40">
+                  <FileSearch className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+                  <h3 className="font-semibold mb-1">No prices found</h3>
+                  <p className="text-sm text-muted-foreground">Try broadening your search or adjusting filters.</p>
                 </div>
-                <Button size="sm" variant="secondary" onClick={() => {/* Simple alert for now, could open a modal */ toast({ title: "Comparing", description: comparingResults.map(r => `${r.providerName}: $${r.exactPrice}`).join(' vs ') })}}>
-                  Compare
-                </Button>
-              </div>
+              ) : (
+                results.map((r) => (
+                  <ResultCard
+                    key={r.id}
+                    result={r}
+                    onSelect={() => setSelectedProviderId(r.providerId)}
+                    isComparing={compareIds.has(r.id)}
+                    onToggleCompare={() => toggleCompare(r.id)}
+                  />
+                ))
+              )}
+            </TabsContent>
+
+            {noPrice.length > 0 && (
+              <TabsContent value="noprice" className="mt-0 p-4 space-y-2">
+                <p className="text-xs text-muted-foreground mb-3">
+                  These providers were found but did not have a publicly posted price for this service.
+                </p>
+                {noPrice.map((p: { providerName: string; city?: string; country?: string; website?: string }, i: number) => (
+                  <NoPriceRow key={i} provider={p} />
+                ))}
+              </TabsContent>
             )}
-
-            {/* Price Results */}
-            {response.results.map((result) => (
-              <ResultCard 
-                key={result.id} 
-                result={result} 
-                onClick={() => setSelectedProviderId(result.providerId)} 
-                onCompare={() => toggleCompare(result.id)}
-                isComparing={compareIds.has(result.id)}
-              />
-            ))}
-
-            {/* No Price Providers (Separated) */}
-            {response.nopriceProviders && response.nopriceProviders.length > 0 && (
-              <div className="mt-8 pt-6 border-t border-border/40">
-                <h4 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4 px-2 flex items-center gap-2">
-                  <Building className="w-4 h-4" />
-                  Providers Found (No Price Posted)
-                </h4>
-                <div className="space-y-3">
-                  {response.nopriceProviders.map((provider, i) => (
-                    <div key={i} className="p-4 rounded-xl border border-border/40 bg-muted/10 opacity-70 hover:opacity-100 transition-opacity flex flex-col gap-1 cursor-pointer" onClick={() => setSelectedProviderId(provider.providerId)}>
-                      <div className="font-semibold text-sm">{provider.providerName}</div>
-                      <div className="text-xs text-muted-foreground">{provider.city}, {provider.stateRegion}</div>
-                      <div className="mt-2 text-xs flex items-center gap-1.5 text-amber-600 dark:text-amber-500 bg-amber-500/10 w-fit px-2 py-0.5 rounded-full">
-                        <AlertTriangle className="w-3 h-3" />
-                        {provider.reason}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-          </div>
+          </Tabs>
         </ScrollArea>
       </div>
 
-      <ProviderDetailDrawer 
-        providerId={selectedProviderId} 
-        onClose={() => setSelectedProviderId(null)} 
+      <ProviderDrawer
+        providerId={selectedProviderId}
+        open={!!selectedProviderId}
+        onClose={() => setSelectedProviderId(null)}
       />
     </>
   );
-}
-
-function ResultCard({ result, onClick, onCompare, isComparing }: { result: PriceResult, onClick: () => void, onCompare: (e: React.MouseEvent) => void, isComparing: boolean }) {
-  // Determine verification styling
-  let verifConfig = { icon: CheckCircle2, color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-500/10 border-emerald-500/20' };
-  
-  if (result.verificationStatus.includes('needs_review') || result.confidenceScore < 80) {
-    verifConfig = { icon: AlertTriangle, color: 'text-amber-600 dark:text-amber-500', bg: 'bg-amber-500/10 border-amber-500/20' };
-  } else if (result.verificationStatus.includes('rejected')) {
-    verifConfig = { icon: ShieldAlert, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-500/10 border-red-500/20' };
-  }
-
-  const getSourceBadgeColor = (type: string) => {
-    const t = type.toLowerCase();
-    if (t.includes('mrf') || t.includes('hospital')) return 'bg-blue-500/10 text-blue-600 border-blue-500/20';
-    if (t.includes('pdf')) return 'bg-rose-500/10 text-rose-600 border-rose-500/20';
-    if (t.includes('cms')) return 'bg-violet-500/10 text-violet-600 border-violet-500/20';
-    return 'bg-slate-500/10 text-slate-600 border-slate-500/20';
-  };
-
-  const VerifIcon = verifConfig.icon;
-
-  return (
-    <div 
-      onClick={onClick}
-      className={`bg-card hover:bg-white/60 dark:hover:bg-white/5 border rounded-2xl p-4 transition-all duration-200 cursor-pointer group shadow-sm hover:shadow-md relative overflow-hidden ${isComparing ? 'border-primary ring-1 ring-primary/50' : 'border-border/50'}`}
-    >
-      <div className={`absolute top-0 right-0 w-32 h-32 blur-3xl opacity-10 rounded-full transition-opacity group-hover:opacity-20 pointer-events-none ${result.confidenceScore >= 90 ? 'bg-emerald-500' : 'bg-primary'}`}></div>
-
-      <div className="flex justify-between items-start mb-3 relative z-10">
-        <div className="pr-4">
-          <h4 className="font-bold text-[15px] leading-tight text-foreground group-hover:text-primary transition-colors">{result.providerName}</h4>
-          <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-            <MapPin className="w-3 h-3" />
-            {result.city}, {result.stateRegion}
-          </p>
-        </div>
-        <div className="text-right shrink-0">
-          <div className="text-2xl font-black text-foreground tracking-tight">
-            {result.currency === 'USD' ? '$' : result.currency}{result.exactPrice.toLocaleString()}
-          </div>
-          <div className="text-[10px] uppercase tracking-widest text-muted-foreground font-bold mt-0.5">
-            {result.priceType}
-          </div>
-        </div>
-      </div>
-      
-      <div className="text-sm font-medium mb-4 text-foreground/80 line-clamp-1 relative z-10">
-        {result.normalizedService}
-        {result.billingCode && (
-          <span className="ml-2 font-mono text-xs text-muted-foreground font-normal bg-muted/50 px-1.5 py-0.5 rounded">
-            {result.billingCode}
-          </span>
-        )}
-      </div>
-      
-      <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-border/40 relative z-10">
-        <span className={`text-[10px] px-2 py-0.5 rounded-md border font-semibold flex items-center gap-1 ${getSourceBadgeColor(result.sourceType)}`}>
-          <FileText className="w-3 h-3" />
-          {result.sourceType}
-        </span>
-        
-        <span className={`text-[10px] px-2 py-0.5 rounded-md border font-semibold flex items-center gap-1 ${verifConfig.bg} ${verifConfig.color}`}>
-          <VerifIcon className="w-3 h-3" />
-          {result.confidenceScore}% Conf
-        </span>
-
-        <div className="ml-auto flex items-center gap-2">
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="h-6 px-2 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-            onClick={(e) => {
-              e.stopPropagation();
-              onCompare(e);
-            }}
-          >
-            <Scale className="w-3 h-3 mr-1" />
-            {isComparing ? 'Remove' : 'Compare'}
-          </Button>
-          <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ProviderDetailDrawer({ providerId, onClose }: { providerId: number | null, onClose: () => void }) {
-  const { data: provider, isLoading: providerLoading } = useGetProvider(
-    providerId || 0,
-    { query: { enabled: !!providerId, queryKey: ["/api/providers", providerId] } }
-  );
-
-  const { data: prices, isLoading: pricesLoading } = useGetProviderPrices(
-    providerId || 0,
-    { query: { enabled: !!providerId, queryKey: ["/api/providers", providerId, "prices"] } }
-  );
-
-  const createBookmarkMutation = useCreateBookmark();
-  const { toast } = useToast();
-
-  const handleBookmark = () => {
-    if (!providerId) return;
-    createBookmarkMutation.mutate({ data: { providerId } }, {
-      onSuccess: () => {
-        toast({ title: "Bookmark saved" });
-      }
-    });
-  };
-
-  return (
-    <Drawer open={!!providerId} onOpenChange={(open) => !open && onClose()}>
-      <DrawerContent className="max-h-[90vh] glass-panel rounded-t-3xl border-t border-border/40">
-        <div className="mx-auto w-full max-w-4xl flex flex-col h-full overflow-hidden">
-          {providerLoading ? (
-            <div className="p-8 space-y-4">
-              <div className="h-8 w-1/2 bg-muted/50 rounded animate-pulse"></div>
-              <div className="h-4 w-1/4 bg-muted/50 rounded animate-pulse"></div>
-            </div>
-          ) : provider ? (
-            <>
-              <DrawerHeader className="border-b border-border/40 shrink-0">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <DrawerTitle className="text-2xl font-bold tracking-tight">{provider.name}</DrawerTitle>
-                    <DrawerDescription className="flex items-center gap-2 mt-2">
-                      <MapPin className="w-4 h-4" />
-                      {provider.address}, {provider.city}, {provider.stateRegion}
-                    </DrawerDescription>
-                  </div>
-                  <div className="flex gap-2">
-                    {provider.website && (
-                      <Button variant="outline" size="sm" asChild className="glass-button">
-                        <a href={provider.website} target="_blank" rel="noreferrer">
-                          <ExternalLink className="w-4 h-4 mr-2" />
-                          Website
-                        </a>
-                      </Button>
-                    )}
-                    <Button variant="secondary" size="sm" onClick={handleBookmark} disabled={createBookmarkMutation.isPending}>
-                      Bookmark
-                    </Button>
-                  </div>
-                </div>
-              </DrawerHeader>
-
-              <ScrollArea className="flex-1 p-6">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  
-                  {/* Info Column */}
-                  <div className="space-y-6">
-                    <div className="glass-panel p-4 space-y-4">
-                      <div>
-                        <h5 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Provider Type</h5>
-                        <p className="font-medium">{provider.providerType}</p>
-                      </div>
-                      {provider.npi && (
-                        <div>
-                          <h5 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">NPI</h5>
-                          <p className="font-mono text-sm">{provider.npi}</p>
-                        </div>
-                      )}
-                      {provider.phone && (
-                        <div>
-                          <h5 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Phone</h5>
-                          <p className="font-medium">{provider.phone}</p>
-                        </div>
-                      )}
-                      <div>
-                        <h5 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">Sources Verified</h5>
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {provider.sources.map(s => (
-                            <Badge key={s} variant="secondary" className="text-[10px]">{s}</Badge>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Prices Column */}
-                  <div className="md:col-span-2 space-y-4">
-                    <h3 className="font-semibold text-lg flex items-center gap-2">
-                      <Shield className="w-5 h-5 text-primary" />
-                      Verified Intelligence Evidence
-                    </h3>
-                    
-                    {pricesLoading ? (
-                      <div className="space-y-4">
-                        {[1,2].map(i => <div key={i} className="h-32 bg-muted/20 animate-pulse rounded-xl"></div>)}
-                      </div>
-                    ) : prices && prices.length > 0 ? (
-                      <div className="space-y-4">
-                        {prices.map((price) => (
-                          <div key={price.id} className="glass-panel p-5 border border-border/40">
-                            <div className="flex justify-between items-start mb-4">
-                              <div>
-                                <h4 className="font-bold text-foreground">{price.normalizedService}</h4>
-                                <p className="text-sm text-muted-foreground mt-1">Raw Query: {price.serviceQuery}</p>
-                              </div>
-                              <div className="text-right">
-                                <div className="text-xl font-black text-foreground">
-                                  {price.currency === 'USD' ? '$' : price.currency}{price.exactPrice.toLocaleString()}
-                                </div>
-                                <div className="text-xs uppercase tracking-wider text-muted-foreground font-semibold mt-0.5">
-                                  {price.priceType}
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="bg-muted/30 rounded-lg p-3 space-y-3 border border-border/20">
-                              <div>
-                                <h5 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Raw Evidence Text</h5>
-                                <p className="text-xs font-mono text-foreground/80 break-words line-clamp-3">"{price.evidenceText}"</p>
-                              </div>
-                              
-                              <div className="flex items-center justify-between border-t border-border/20 pt-3">
-                                <div className="flex gap-4">
-                                  {price.billingCode && (
-                                    <div>
-                                      <h5 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Code</h5>
-                                      <span className="text-xs font-mono">{price.billingCode}</span>
-                                    </div>
-                                  )}
-                                  <div>
-                                    <h5 className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Timestamp</h5>
-                                    <span className="text-xs font-mono">{format(new Date(price.timestampFound), 'MMM d, yyyy HH:mm')}</span>
-                                  </div>
-                                </div>
-                                
-                                {price.sourceUrl && (
-                                  <a href={price.sourceUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold text-primary hover:underline flex items-center gap-1">
-                                    Source File <ExternalLink className="w-3 h-3" />
-                                  </a>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="glass-panel p-8 text-center text-muted-foreground border border-border/40">
-                        No individual prices recorded for this provider.
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </ScrollArea>
-            </>
-          ) : null}
-        </div>
-      </DrawerContent>
-    </Drawer>
-  );
-}
-
-// Dummy SearchIcon component for empty state
-function SearchIcon() {
-  return <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinelinejoin="round" className="text-muted-foreground"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>;
 }
