@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import { Switch, Route, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -28,6 +28,10 @@ function Router() {
     <Layout>
       <Switch>
         <Route path="/" component={Home} />
+        {/* Alias /search → Home so direct links and hub nav work */}
+        <Route path="/search">
+          <Redirect to="/" />
+        </Route>
         <Route path="/bookmarks" component={Bookmarks} />
         <Route path="/history" component={History} />
         <Route path="/admin" component={Admin} />
