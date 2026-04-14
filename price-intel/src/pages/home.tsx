@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 import { useSearchPrices, useGetStatsSummary, useGetTopServices } from "@workspace/api-client-react";
 import type { SearchRequest, PriceResult, SearchResponse } from "@workspace/api-client-react";
 import {
