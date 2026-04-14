@@ -53,12 +53,22 @@ export function Home() {
     { query: { queryKey: ["/api/stats/top-services", { limit: 12 }] } }
   );
 
+  const { toast } = useToast();
+
   const handleSearch = (query: SearchRequest) => {
     setSearchQuery(query);
-    searchMutation.mutate({ data: query });
+    searchMutation.mutate(
+      { data: query },
+      {
+        onError: (err: unknown) => {
+          const message = err instanceof Error ? err.message : "Search failed — please try again";
+          toast({ title: "Search error", description: message, variant: "destructive" });
+        },
+      }
+    );
   };
 
-  const hasSearched = searchMutation.isSuccess || searchMutation.isPending;
+  const hasSearched = searchMutation.isSuccess || searchMutation.isPending || searchMutation.isError;
   const results = (searchMutation.data as SearchResponse | undefined)?.results ?? [];
 
   return (
