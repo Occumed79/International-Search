@@ -138,11 +138,18 @@ export function SearchBar({
     <div className="w-full relative" ref={wrapperRef}>
       <form
         onSubmit={handleSubmit}
-        className={`glass-panel flex flex-col sm:flex-row items-stretch shadow-2xl shadow-black/5 transition-all duration-300 ring-1 ring-white/20 dark:ring-white/10 ${
+        className={`flex flex-col sm:flex-row items-stretch transition-all duration-300 ${
           isCompact
-            ? "p-1.5 gap-1.5 rounded-2xl bg-white/40 dark:bg-black/40"
-            : "p-2.5 gap-2.5 rounded-3xl bg-white/60 dark:bg-black/60"
+            ? "p-1.5 gap-1.5 rounded-2xl"
+            : "p-2.5 gap-2.5 rounded-3xl"
         }`}
+        style={{
+          background: isCompact ? "rgba(18, 6, 36, 0.82)" : "rgba(22, 8, 42, 0.75)",
+          backdropFilter: "blur(28px) saturate(160%)",
+          WebkitBackdropFilter: "blur(28px) saturate(160%)",
+          border: "1px solid rgba(160, 80, 255, 0.22)",
+          boxShadow: "0 8px 40px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.06)",
+        }}
       >
         {/* Service query input */}
         <div className="relative flex-[1.5] flex items-center group">
@@ -230,7 +237,8 @@ export function SearchBar({
               </Button>
             </PopoverTrigger>
             <PopoverContent
-              className="w-96 p-5 glass-panel border-border/40 shadow-2xl"
+              className="w-96 p-5 shadow-2xl rounded-2xl"
+              style={{ background: "rgba(18,6,36,0.96)", backdropFilter: "blur(28px)", border: "1px solid rgba(160,80,255,0.22)" }}
               align="end"
               sideOffset={12}
             >
@@ -327,7 +335,9 @@ export function SearchBar({
 
       {/* Suggestions Dropdown */}
       {showSuggestions && suggestions && suggestions.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-2 z-50 glass-panel border border-border/40 shadow-2xl rounded-2xl overflow-hidden">
+        <div className="absolute top-full left-0 right-0 mt-2 z-50 rounded-2xl overflow-hidden"
+          style={{ background: "rgba(18,6,36,0.95)", backdropFilter: "blur(24px)", border: "1px solid rgba(160,80,255,0.22)", boxShadow: "0 16px 48px rgba(0,0,0,0.65)" }}
+        >
           {suggestions.map((s, i) => (
             <button
               key={i}
@@ -350,3 +360,4 @@ export function SearchBar({
     </div>
   );
 }
+
