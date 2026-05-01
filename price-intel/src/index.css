@@ -78,15 +78,15 @@
   --elevate-1: rgba(255,255,255,.04);
   --elevate-2: rgba(255,255,255,.09);
 
-  /* Deep purple-navy — cohesive with hub cinematic dark */
-  --background: 255 40% 5%;
-  --foreground: 270 30% 96%;
-  --border: 265 30% 16%;
+  /* Hub-matched deep navy/teal — same as price-search-tool Hub */
+  --background: 216 45% 8%;
+  --foreground: 210 40% 96%;
+  --border: 215 35% 18%;
 
-  /* Glass cards */
-  --card: 260 38% 8%;
-  --card-foreground: 270 30% 96%;
-  --card-border: rgba(160, 100, 255, 0.15);
+  /* Glass cards — slightly lighter than bg */
+  --card: 216 42% 11%;
+  --card-foreground: 210 40% 96%;
+  --card-border: rgba(99, 179, 237, 0.15);
 
   --sidebar: 216 42% 10%;
   --sidebar-foreground: 210 40% 96%;
@@ -101,8 +101,8 @@
   --popover-foreground: 210 40% 96%;
   --popover-border: rgba(99, 179, 237, 0.2);
 
-  /* Purple accent — matches hub cinematic glow */
-  --primary: 265 80% 65%;
+  /* Electric cyan-blue — matches Hub accent glow */
+  --primary: 200 100% 55%;
   --primary-foreground: 0 0% 100%;
 
   --secondary: 215 35% 16%;
@@ -172,13 +172,12 @@
     color: hsl(var(--foreground));
     min-height: 100vh;
 
-    /* Hub-matched cinematic gradient — teal/blue radial like the Hub homepage */
+    /* Hub-matched cinematic gradient — deep purple/amber/maroon like the hub */
     background-image:
-      radial-gradient(ellipse at 20% 0%,   hsla(210, 100%, 40%, 0.28) 0px, transparent 55%),
-      radial-gradient(ellipse at 80% 10%,  hsla(195, 100%, 50%, 0.18) 0px, transparent 50%),
-      radial-gradient(ellipse at 50% 100%, hsla(230, 80%, 25%, 0.22) 0px, transparent 60%),
-      radial-gradient(ellipse at 0%  60%,  hsla(215, 100%, 30%, 0.16) 0px, transparent 45%),
-      radial-gradient(ellipse at 100% 50%, hsla(200, 90%,  45%, 0.12) 0px, transparent 40%);
+      radial-gradient(ellipse at 50% 0%,   hsla(340, 60%, 18%, 0.90) 0px, transparent 60%),
+      radial-gradient(ellipse at 20% 30%,  hsla(280, 70%, 20%, 0.45) 0px, transparent 55%),
+      radial-gradient(ellipse at 80% 20%,  hsla(260, 60%, 15%, 0.35) 0px, transparent 50%),
+      radial-gradient(ellipse at 50% 100%, hsla(300, 50%, 10%, 0.60) 0px, transparent 60%);
     background-attachment: fixed;
   }
 }
@@ -187,24 +186,24 @@
    Glass Panel — frosted card, matches Hub card style
 ─────────────────────────────────────────────────────────────────── */
 .glass-panel {
-  background: rgba(10, 18, 35, 0.60);
-  backdrop-filter: blur(24px) saturate(180%);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(99, 179, 237, 0.14);
+  background: rgba(20, 8, 35, 0.65);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid rgba(180, 100, 255, 0.14);
   box-shadow:
-    0 4px 24px rgba(0, 0, 0, 0.40),
+    0 4px 24px rgba(0, 0, 0, 0.50),
     inset 0 1px 0 rgba(255, 255, 255, 0.07),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.03);
   border-radius: 1rem;
 }
 
 .glass-panel:hover {
-  border-color: rgba(99, 179, 237, 0.26);
+  border-color: rgba(180, 100, 255, 0.28);
   box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.45),
-    0 0 0 1px rgba(99, 179, 237, 0.10),
+    0 8px 32px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(160, 80, 255, 0.10),
     inset 0 1px 0 rgba(255, 255, 255, 0.09),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
 /* ───────────────────────────────────────────────────────────────────
@@ -227,7 +226,7 @@
    Glow & Animation utilities
 ─────────────────────────────────────────────────────────────────── */
 .glow-primary {
-  box-shadow: 0 0 20px rgba(0, 180, 230, 0.40), 0 0 60px rgba(0, 180, 230, 0.18);
+  box-shadow: 0 0 20px rgba(160, 80, 255, 0.40), 0 0 60px rgba(160, 80, 255, 0.18);
 }
 
 @keyframes scan-line {
@@ -242,13 +241,13 @@
   position: absolute;
   inset-x: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(0, 180, 230, 0.65), transparent);
+  background: linear-gradient(90deg, transparent, rgba(160, 80, 255, 0.65), transparent);
   animation: scan-line 3s linear infinite;
 }
 
 @keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 8px rgba(0, 180, 230, 0.35); }
-  50%       { box-shadow: 0 0 24px rgba(0, 180, 230, 0.75), 0 0 48px rgba(0, 180, 230, 0.35); }
+  0%, 100% { box-shadow: 0 0 8px rgba(160, 80, 255, 0.35); }
+  50%       { box-shadow: 0 0 24px rgba(160, 80, 255, 0.75), 0 0 48px rgba(160, 80, 255, 0.35); }
 }
 
 .pulse-glow {
@@ -259,21 +258,21 @@
    Hub-style card glow ring (used on portal cards)
 ─────────────────────────────────────────────────────────────────── */
 .hub-card {
-  background: linear-gradient(145deg, rgba(20, 35, 60, 0.80), rgba(10, 20, 40, 0.90));
-  border: 1px solid rgba(99, 179, 237, 0.18);
+  background: linear-gradient(145deg, rgba(30, 12, 55, 0.82), rgba(15, 6, 30, 0.92));
+  border: 1px solid rgba(160, 80, 255, 0.18);
   box-shadow:
-    0 8px 32px rgba(0, 0, 0, 0.50),
-    0 0 0 1px rgba(99, 179, 237, 0.06),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    0 8px 32px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(160, 80, 255, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
   border-radius: 1.25rem;
   transition: all 0.3s ease;
 }
 
 .hub-card:hover {
-  border-color: rgba(99, 179, 237, 0.35);
+  border-color: rgba(160, 80, 255, 0.38);
   box-shadow:
-    0 16px 48px rgba(0, 0, 0, 0.60),
-    0 0 32px rgba(0, 160, 220, 0.15),
+    0 16px 48px rgba(0, 0, 0, 0.65),
+    0 0 32px rgba(140, 60, 240, 0.18),
     inset 0 1px 0 rgba(255, 255, 255, 0.10);
   transform: translateY(-2px);
 }
