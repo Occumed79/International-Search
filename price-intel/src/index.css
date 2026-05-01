@@ -78,15 +78,15 @@
   --elevate-1: rgba(255,255,255,.04);
   --elevate-2: rgba(255,255,255,.09);
 
-  /* Hub-matched deep navy/teal — same as price-search-tool Hub */
-  --background: 216 45% 8%;
-  --foreground: 210 40% 96%;
-  --border: 215 35% 18%;
+  /* Deep purple-navy — cohesive with hub cinematic dark */
+  --background: 255 40% 5%;
+  --foreground: 270 30% 96%;
+  --border: 265 30% 16%;
 
-  /* Glass cards — slightly lighter than bg */
-  --card: 216 42% 11%;
-  --card-foreground: 210 40% 96%;
-  --card-border: rgba(99, 179, 237, 0.15);
+  /* Glass cards */
+  --card: 260 38% 8%;
+  --card-foreground: 270 30% 96%;
+  --card-border: rgba(160, 100, 255, 0.15);
 
   --sidebar: 216 42% 10%;
   --sidebar-foreground: 210 40% 96%;
@@ -101,8 +101,8 @@
   --popover-foreground: 210 40% 96%;
   --popover-border: rgba(99, 179, 237, 0.2);
 
-  /* Electric cyan-blue — matches Hub accent glow */
-  --primary: 200 100% 55%;
+  /* Purple accent — matches hub cinematic glow */
+  --primary: 265 80% 65%;
   --primary-foreground: 0 0% 100%;
 
   --secondary: 215 35% 16%;
@@ -288,3 +288,4 @@
     pointer-events: none;
   }
 }
+
