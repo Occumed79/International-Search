@@ -312,6 +312,21 @@ router.post("/search", async (req, res): Promise<void> => {
     return;
   }
 
+  if (!(db as any)) {
+    // No database — skip DB queries, rely on live sources only
+    const isUS = !parsed.data.country || parsed.data.country === "US" || parsed.data.country === "";
+    const { query, country = "US", state, city } = parsed.data;
+    const [doltResults, npiResults, cmsResults] = await Promise.all([
+      isUS ? queryDoltHub(query, state ?? city) : Promise.resolve([]),
+      isUS ? queryNPI(query, state, city) : Promise.resolve([]),
+      isUS ? queryCMSFeeSchedule(query) : Promise.resolve([]),
+    ]);
+    const allLive: LiveResult[] = [...doltResults, ...npiResults, ...cmsResults];
+    allLive.sort((a, b) => b.confidenceScore - a.confidenceScore);
+    res.json({ results: allLive, total: allLive.length, page: 1, pageSize: allLive.length, searchId: null, isLive: true, noDB: true });
+    return;
+  }
+
   const {
     query, country, state, city, providerType,
     cashPayOnly, hospitalOnly, clinicOnly, imagingOnly,
@@ -356,7 +371,7 @@ router.post("/search", async (req, res): Promise<void> => {
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-  const [dbResults, countResult] = db ? await Promise.all([
+  const [dbResults, countResult] = await Promise.all([
     db.select({
       id: pricesTable.id,
       providerId: providersTable.id,
@@ -395,7 +410,7 @@ router.post("/search", async (req, res): Promise<void> => {
       .from(pricesTable)
       .innerJoin(providersTable, eq(pricesTable.providerId, providersTable.id))
       .where(whereClause),
-  ]) : [Promise.resolve([]), Promise.resolve([{ count: 0 }])];
+  ]);
 
   const dbFormatted = (dbResults as any[]).map(r => ({ ...r, timestampFound: r.timestampFound?.toISOString?.() ?? new Date().toISOString() }));
 
