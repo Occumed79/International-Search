@@ -6,6 +6,7 @@ import { GetTopServicesQueryParams } from "@workspace/api-zod";
 const router: IRouter = Router();
 
 router.get("/stats/summary", async (_req, res): Promise<void> => {
+  if (!db) { res.json({ totalProviders:0, totalPrices:0, totalSources:0, countriesCovered:0, statesCovered:0, avgConfidenceScore:0, recentSearchCount:0, _noDB:true }); return; }
   const [providerCount] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(providersTable);
@@ -49,6 +50,7 @@ router.get("/stats/top-services", async (req, res): Promise<void> => {
   const parsed = GetTopServicesQueryParams.safeParse(req.query);
   const limit = parsed.success ? (parsed.data.limit ?? 10) : 10;
 
+  if (!db) { res.json([]); return; }
   const topServices = await db
     .select({
       service: pricesTable.normalizedService,
@@ -64,6 +66,7 @@ router.get("/stats/top-services", async (req, res): Promise<void> => {
 });
 
 router.get("/stats/source-breakdown", async (_req, res): Promise<void> => {
+  if (!db) { res.json([]); return; }
   const [totalResult] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(pricesTable);
@@ -89,6 +92,7 @@ router.get("/stats/source-breakdown", async (_req, res): Promise<void> => {
 });
 
 router.get("/admin/diagnostics", async (_req, res): Promise<void> => {
+  if (!db) { res.json({ totalCrawls:0, successfulCrawls:0, failedCrawls:0, sourceHitRate:0, extractionSuccessRate:0, rejectedResults:0, staleResults:0, brokenSources:0, lastCrawlAt:null, connectorStatus:[], _noDB:true }); return; }
   const [totalCrawls] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(crawlLogsTable);
@@ -153,6 +157,7 @@ router.get("/admin/diagnostics", async (_req, res): Promise<void> => {
 });
 
 router.get("/services/popular", async (_req, res): Promise<void> => {
+  if (!db) { res.json([]); return; }
   const services = await db
     .select({
       name: pricesTable.normalizedService,
@@ -206,6 +211,7 @@ router.get("/services/popular", async (_req, res): Promise<void> => {
 router.post("/export/csv", async (req, res): Promise<void> => {
   const { searchId } = req.body;
 
+  if (!db) { res.status(503).json({ error: "Database not configured" }); return; }
   const prices = await db
     .select({
       providerName: providersTable.name,
