@@ -481,6 +481,7 @@ Otherwise return exactly: null`;
 
 // ─── Upsert provider + price ──────────────────────────────────────────────────
 async function upsertResult(extracted: ExtractedPrice): Promise<void> {
+  if (!db) { logger.warn("upsertResult skipped — no database configured"); return; }
   const websiteKey = extracted.website ?? extracted.sourceUrl;
   const [existing] = await db
     .select({ id: providersTable.id })
@@ -643,7 +644,7 @@ export async function runInternationalSearch(params: SearchParams): Promise<void
     try { await upsertResult(r); persisted++; } catch (err) { logger.warn({ err }, "Persist failed"); }
   }
 
-  await db.insert(crawlLogsTable).values({
+  if (db) await db.insert(crawlLogsTable).values({
     connectorName: `surgical:${country}`,
     status: persisted > 0 ? "success" : "no_results",
     recordsIngested: persisted,
