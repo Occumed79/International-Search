@@ -356,7 +356,7 @@ router.post("/search", async (req, res): Promise<void> => {
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-  const [dbResults, countResult] = await Promise.all([
+  const [dbResults, countResult] = db ? await Promise.all([
     db.select({
       id: pricesTable.id,
       providerId: providersTable.id,
@@ -395,9 +395,9 @@ router.post("/search", async (req, res): Promise<void> => {
       .from(pricesTable)
       .innerJoin(providersTable, eq(pricesTable.providerId, providersTable.id))
       .where(whereClause),
-  ]);
+  ]) : [Promise.resolve([]), Promise.resolve([{ count: 0 }])];
 
-  const dbFormatted = dbResults.map(r => ({ ...r, timestampFound: r.timestampFound.toISOString() }));
+  const dbFormatted = (dbResults as any[]).map(r => ({ ...r, timestampFound: r.timestampFound?.toISOString?.() ?? new Date().toISOString() }));
 
   // ── 2. Live sources — run in parallel, return immediately ────────────────
   // These are FREE / no-API-key sources that always work
