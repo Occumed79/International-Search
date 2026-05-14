@@ -11,6 +11,7 @@ router.get("/providers/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
+  if (!db) { res.status(503).json({ error: "Database not configured" }); return; }
 
   const [provider] = await db
     .select()
