@@ -3,7 +3,7 @@ services:
     name: international-search
     runtime: node
     rootDir: .
-    buildCommand: npm install -g pnpm && pnpm install --no-frozen-lockfile && PORT=10000 BASE_PATH=/ NODE_ENV=production pnpm --filter @workspace/price-intel build && pnpm --filter @workspace/api-server build
+    buildCommand: npm install -g pnpm && pnpm install --no-frozen-lockfile --ignore-store-consistency-check && PORT=10000 BASE_PATH=/ NODE_ENV=production pnpm --filter @workspace/price-intel build && pnpm --filter @workspace/api-server build
     startCommand: sh ./start.sh
     envVars:
       - key: NODE_ENV
