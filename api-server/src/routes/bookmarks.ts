@@ -6,6 +6,7 @@ import { CreateBookmarkBody, DeleteBookmarkParams } from "@workspace/api-zod";
 const router: IRouter = Router();
 
 router.get("/bookmarks", async (_req, res): Promise<void> => {
+  if (!db) { res.json([]); return; }
   const bookmarks = await db
     .select({
       id: bookmarksTable.id,
@@ -34,6 +35,7 @@ router.post("/bookmarks", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
+  if (!db) { res.status(503).json({ error: "Database not configured" }); return; }
 
   const [provider] = await db
     .select()
@@ -68,6 +70,7 @@ router.delete("/bookmarks/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
+  if (!db) { res.status(503).json({ error: "Database not configured" }); return; }
 
   const [deleted] = await db
     .delete(bookmarksTable)
