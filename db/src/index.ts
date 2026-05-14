@@ -4,12 +4,16 @@ import * as schema from "./schema";
 
 const { Pool } = pg;
 
-let pool: pg.Pool | null = null;
-let db: ReturnType<typeof drizzle<typeof schema>> | null = null;
+// db is nullable at runtime when DATABASE_URL is not set.
+// Routes must check `if (!db)` before calling any db method.
+// We cast to the non-null type here to satisfy TypeScript; the null check is the caller's responsibility.
+
+let _pool: pg.Pool | null = null;
+let _db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 
 if (process.env.DATABASE_URL) {
-  pool = new Pool({ connectionString: process.env.DATABASE_URL });
-  db = drizzle(pool, { schema });
+  _pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  _db = drizzle(_pool, { schema });
 } else {
   console.warn(
     "[db] DATABASE_URL not set — running in no-database mode. " +
@@ -17,5 +21,7 @@ if (process.env.DATABASE_URL) {
   );
 }
 
-export { pool, db };
+// Export as the non-null type; callers must guard with `if (!db)` before use
+export const pool = _pool;
+export const db = _db as ReturnType<typeof drizzle<typeof schema>>;
 export * from "./schema";
