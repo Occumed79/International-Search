@@ -1,15 +1,16 @@
 #!/bin/sh
 set -e
 
-echo "[start] Running database migration..."
+echo "[start] Checking database schema..."
 cd /opt/render/project/src
 
-# Run drizzle-kit push to ensure schema exists
 if [ -n "$DATABASE_URL" ]; then
-  node_modules/.bin/drizzle-kit push --config db/drizzle.config.ts --force 2>&1 || echo "[start] Migration warning (may already be up to date)"
+  echo "[start] Running drizzle-kit push..."
+  # Use pnpm dlx to ensure drizzle-kit is available even if not in node_modules
+  (cd db && DATABASE_URL="$DATABASE_URL" npx --yes drizzle-kit push --config drizzle.config.ts --force 2>&1) || echo "[start] Schema push skipped (tables may already exist)"
 else
-  echo "[start] No DATABASE_URL — skipping migration"
+  echo "[start] No DATABASE_URL set — running in no-database mode"
 fi
 
-echo "[start] Starting server..."
+echo "[start] Starting API server..."
 exec node --enable-source-maps ./api-server/dist/index.mjs
