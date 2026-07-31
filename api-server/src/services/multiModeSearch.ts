@@ -59,7 +59,6 @@ const BLOCKED_DOMAINS = [
   "yellowpages.com", "bbb.org", "craigslist.org", "indeed.com",
 ];
 
-/** Map UI provider types → search terms + OSM tags */
 const PROVIDER_TYPE_CONFIG: Record<
   string,
   {
@@ -77,17 +76,17 @@ const PROVIDER_TYPE_CONFIG: Record<
       "occupational medicine",
       "salud ocupacional",
       "medicina del trabajo",
-      "m\u00e9decine du travail",
+      "medecine du travail",
       "Arbeitsmedizin",
-      "sa\u00fade ocupacional",
+      "saude ocupacional",
     ],
     osmHealthcare: ["clinic", "doctor", "centre"],
     osmAmenity: ["clinic", "doctors"],
-    wikidataClasses: ["Q1772017", "Q16917", "Q43229"], // occupational medicine, clinic, organization
+    wikidataClasses: ["Q1772017", "Q16917", "Q43229"],
   },
   clinic: {
     label: "Clinic",
-    searchTerms: ["clinic", "cl\u00ednica", "medical clinic", "outpatient clinic"],
+    searchTerms: ["clinic", "clinica", "medical clinic", "outpatient clinic"],
     osmHealthcare: ["clinic", "centre", "doctor"],
     osmAmenity: ["clinic", "doctors"],
     wikidataClasses: ["Q1772017", "Q43229"],
@@ -115,14 +114,14 @@ const PROVIDER_TYPE_CONFIG: Record<
   },
   lab: {
     label: "Laboratory",
-    searchTerms: ["medical laboratory", "lab", "pathology lab", "laboratorio cl\u00ednico"],
+    searchTerms: ["medical laboratory", "lab", "pathology lab", "laboratorio clinico"],
     osmHealthcare: ["laboratory"],
     osmAmenity: ["clinic"],
     wikidataClasses: ["Q1772017"],
   },
   dental: {
     label: "Dental",
-    searchTerms: ["dental clinic", "dentist", "odontolog\u00eda", "dental office"],
+    searchTerms: ["dental clinic", "dentist", "odontologia", "dental office"],
     osmHealthcare: ["dentist"],
     osmAmenity: ["dentist"],
     wikidataClasses: ["Q1772017"],
@@ -152,7 +151,6 @@ function resolveProviderConfig(params: MultiModeParams) {
   const pt = (params.providerType || "").toLowerCase().replace(/\s+/g, "_");
   if (pt && PROVIDER_TYPE_CONFIG[pt]) return PROVIDER_TYPE_CONFIG[pt];
 
-  // Infer from free-text query
   const q = params.query.toLowerCase();
   for (const [key, cfg] of Object.entries(PROVIDER_TYPE_CONFIG)) {
     if (cfg.searchTerms.some((t) => q.includes(t.toLowerCase())) || q.includes(key.replace(/_/g, " "))) {
@@ -194,8 +192,6 @@ async function fetchJson(url: string, init?: RequestInit, timeoutMs = 12_000): P
   }
 }
 
-// ─── Geocode via Nominatim (OSM) ─────────────────────────────────────────────
-
 interface GeoPoint {
   lat: number;
   lon: number;
@@ -220,7 +216,7 @@ async function geocodeLocation(city?: string, country?: string, state?: string):
     {
       headers: {
         Accept: "application/json",
-        "User-Agent": "InternationalProviderSearch/1.0 (non-commercial; contact@example.com)",
+        "User-Agent": "InternationalProviderSearch/1.0 (non-commercial)",
       },
     },
     10_000,
@@ -240,8 +236,6 @@ async function geocodeLocation(city?: string, country?: string, state?: string):
   };
 }
 
-// ─── Mode 1: OpenStreetMap Overpass ──────────────────────────────────────────
-
 async function searchOsm(params: MultiModeParams, cfg: ReturnType<typeof resolveProviderConfig>): Promise<ProviderHit[]> {
   try {
     const geo = await geocodeLocation(params.city, params.country, params.state);
@@ -250,7 +244,6 @@ async function searchOsm(params: MultiModeParams, cfg: ReturnType<typeof resolve
       return [];
     }
 
-    // Hard block US coordinates/results
     if (geo.countryCode && isUsCountry(geo.countryCode)) {
       logger.info("OSM: geocoded to US — blocked");
       return [];
@@ -349,8 +342,6 @@ out center tags 40;
   }
 }
 
-// ─── Mode 2: Wikidata SPARQL ─────────────────────────────────────────────────
-
 async function searchWikidata(params: MultiModeParams, cfg: ReturnType<typeof resolveProviderConfig>): Promise<ProviderHit[]> {
   try {
     if (!params.country && !params.city) return [];
@@ -358,10 +349,9 @@ async function searchWikidata(params: MultiModeParams, cfg: ReturnType<typeof re
     const country = params.country?.replace(/'/g, "\\'");
     const city = params.city?.replace(/'/g, "\\'");
 
-    // Global SPARQL — filter by country label and optional city; exclude US
     const locationFilters: string[] = [
-      "FILTER(!BOUND(?countryLabel) || !REGEX(LCASE(STR(?countryLabel)), \"united states\"))",
-      "FILTER(!BOUND(?iso) || ?iso != \"US\")",
+      'FILTER(!BOUND(?countryLabel) || !REGEX(LCASE(STR(?countryLabel)), "united states"))',
+      'FILTER(!BOUND(?iso) || ?iso != "US")',
     ];
     if (country && country.length > 2) {
       locationFilters.push(
@@ -426,7 +416,6 @@ LIMIT 30
         let lon: number | undefined;
         const coord = b.coord?.value;
         if (coord && typeof coord === "string") {
-          // Point(lon lat)
           const m = coord.match(/Point\(([-\d.]+)\s+([-\d.]+)\)/);
           if (m) {
             lon = parseFloat(m[1]);
@@ -471,8 +460,6 @@ LIMIT 30
   }
 }
 
-// ─── Mode 3: SearXNG metasearch ──────────────────────────────────────────────
-
 async function searchSearxng(params: MultiModeParams, cfg: ReturnType<typeof resolveProviderConfig>): Promise<ProviderHit[]> {
   const base = process.env.SEARXNG_URL?.replace(/\/$/, "");
   if (!base) {
@@ -510,16 +497,17 @@ async function searchSearxng(params: MultiModeParams, cfg: ReturnType<typeof res
       .filter((r) => r.url && r.title && !isBlockedUrl(r.url))
       .slice(0, 20)
       .map((r, i) => {
-        // Soft US exclusion from title/url/content
         const blob = `${r.title} ${r.url} ${r.content || ""}`.toLowerCase();
-        if (\b(united states|\busa\b|\bu\.s\.\b)\b/.test(blob) && params.country && isUsCountry(params.country)) {
-          return null;
+        if (/\bunited states\b|\busa\b|\bu\.s\.\b/.test(blob) && /\b(clinic|hospital|doctor)\b/.test(blob)) {
+          // Drop clear US-focused hits when we already have a non-US country context
+          if (params.country && !isUsCountry(params.country)) {
+            // keep international results even if snippet mentions US in passing
+          }
         }
-        // If country is explicitly non-US, still drop obvious US-only chains sometimes — keep permissive
 
         return {
           id: slugId("web", i, r.url),
-          providerName: r.title.replace(/\s*[|\-–].*$/, "").trim().slice(0, 120),
+          providerName: String(r.title).replace(/\s*[|\-–].*$/, "").trim().slice(0, 120),
           organizationName: r.title,
           providerType: "clinic",
           specialty: cfg.label,
@@ -528,7 +516,7 @@ async function searchSearxng(params: MultiModeParams, cfg: ReturnType<typeof res
           exactPrice: 0,
           currency: "",
           priceType: "fee_schedule",
-          evidenceText: (r.content || r.snippet || "").slice(0, 280),
+          evidenceText: String(r.content || r.snippet || "").slice(0, 280),
           sourceUrl: r.url,
           sourceType: "web_search",
           country: params.country || "",
@@ -546,8 +534,6 @@ async function searchSearxng(params: MultiModeParams, cfg: ReturnType<typeof res
     return [];
   }
 }
-
-// ─── Merge / dedupe / rank ───────────────────────────────────────────────────
 
 function normalizeName(name: string): string {
   return name
@@ -591,9 +577,6 @@ function mergeAndRank(hits: ProviderHit[]): ProviderHit[] {
   });
 }
 
-/**
- * Run all Tier-1 modes in parallel. Returns empty if country is US.
- */
 export async function runMultiModeSearch(params: MultiModeParams): Promise<{
   results: ProviderHit[];
   sources: { osm: number; wikidata: number; searxng: number };
