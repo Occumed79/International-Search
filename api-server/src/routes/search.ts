@@ -16,11 +16,29 @@ import {
 
 const router: IRouter = Router();
 
+const MAX_PAGE_SIZE = 50;
+const MAX_QUERY_LEN = 120;
+const MAX_CITY_LEN = 80;
+
 function hasDb(): boolean {
   return db != null;
 }
 
-/** Map live provider hits into the API result shape (price fields optional / zero). */
+function clampInt(n: unknown, min: number, max: number, fallback: number): number {
+  if (typeof n !== "number" || !Number.isFinite(n)) return fallback;
+  return Math.min(Math.max(Math.round(n), min), max);
+}
+
+function sanitizeLikeFragment(input: string, maxLen: number): string {
+  // Strip LIKE wildcards the user might inject; we add our own %
+  return input
+    .replace(/[\u0000-\u001F\u007F]/g, "")
+    .replace(/[%_\\]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLen);
+}
+
 function toApiResult(hit: ProviderHit, idx: number) {
   return {
     id: hit.id,
@@ -32,7 +50,7 @@ function toApiResult(hit: ProviderHit, idx: number) {
     serviceQuery: hit.serviceQuery,
     normalizedService: hit.normalizedService,
     billingCode: hit.billingCode,
-    exactPrice: hit.exactPrice ?? 0,
+    exactPrice: typeof hit.exactPrice === "number" && Number.isFinite(hit.exactPrice) ? hit.exactPrice : 0,
     currency: hit.currency || "",
     priceType: hit.priceType || "fee_schedule",
     evidenceText: hit.evidenceText,
@@ -48,7 +66,10 @@ function toApiResult(hit: ProviderHit, idx: number) {
     website: hit.website,
     timestampFound: hit.timestampFound,
     verificationStatus: hit.verificationStatus,
-    confidenceScore: hit.confidenceScore,
+    confidenceScore:
+      typeof hit.confidenceScore === "number" && Number.isFinite(hit.confidenceScore)
+        ? Math.min(Math.max(hit.confidenceScore, 0), 1)
+        : 0.5,
   };
 }
 
@@ -56,14 +77,14 @@ router.post("/search", async (req, res): Promise<void> => {
   try {
     const parsed = SearchPricesBody.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.message });
+      res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
       return;
     }
 
     const {
-      query,
-      state,
-      city,
+      query: rawQuery,
+      state: rawState,
+      city: rawCity,
       providerType,
       radiusMiles,
       page,
@@ -76,10 +97,12 @@ router.post("/search", async (req, res): Promise<void> => {
       dentalOnly,
     } = parsed.data;
 
+    const query = sanitizeLikeFragment(String(rawQuery || ""), MAX_QUERY_LEN);
+    const city = sanitizeLikeFragment(String(rawCity || ""), MAX_CITY_LEN) || undefined;
+    const state = sanitizeLikeFragment(String(rawState || ""), 40) || undefined;
     const country = normalizeCountry(parsed.data.country);
 
-    // ── Hard US exclusion ────────────────────────────────────────────────────
-    if (isUsCountry(country)) {
+    if (isUsCountry(country) || isUsCountry(parsed.data.country || undefined)) {
       res.status(400).json({
         error: "United States searches are not supported on this portal. Use a non-US country or city.",
         blockedUs: true,
@@ -87,8 +110,14 @@ router.post("/search", async (req, res): Promise<void> => {
       return;
     }
 
-    // Infer provider type from filter flags if not explicit
-    let resolvedType = providerType || undefined;
+    if (!country && !city) {
+      res.status(400).json({
+        error: "Provide a non-US country and/or city to search for providers.",
+      });
+      return;
+    }
+
+    let resolvedType = providerType ? String(providerType).slice(0, 40) : undefined;
     if (!resolvedType) {
       if (hospitalOnly) resolvedType = "hospital";
       else if (clinicOnly) resolvedType = "clinic";
@@ -98,24 +127,35 @@ router.post("/search", async (req, res): Promise<void> => {
       else if (dentalOnly) resolvedType = "dental";
     }
 
-    const pageNum = page ?? 1;
-    const pageSz = pageSize ?? 25;
+    const pageNum = clampInt(page, 1, 100, 1);
+    const pageSz = clampInt(pageSize, 1, MAX_PAGE_SIZE, 25);
 
-    // ── Tier 1 multi-mode (OSM + Wikidata + SearXNG) ─────────────────────────
     const multi = await runMultiModeSearch({
       query: query || resolvedType || "clinic",
       country,
-      city: city ?? undefined,
-      state: state ?? undefined,
+      city,
+      state,
       providerType: resolvedType,
-      radiusMiles: radiusMiles ?? 25,
+      radiusMiles: typeof radiusMiles === "number" ? radiusMiles : 25,
     });
 
-    // ── DB cache (non-US only) ───────────────────────────────────────────────
+    if (multi.blockedUs) {
+      res.status(400).json({
+        error: multi.error || "United States searches are not supported on this portal.",
+        blockedUs: true,
+      });
+      return;
+    }
+
+    if (multi.error && multi.results.length === 0) {
+      res.status(400).json({ error: multi.error });
+      return;
+    }
+
     let dbFormatted: any[] = [];
     let searchId: number | null = null;
 
-    if (hasDb()) {
+    if (hasDb() && query) {
       try {
         const conditions = [];
         const searchPattern = `%${query}%`;
@@ -127,7 +167,6 @@ router.post("/search", async (req, res): Promise<void> => {
             ilike(providersTable.specialty, searchPattern),
           ),
         );
-        // Exclude US from DB results
         conditions.push(sql`UPPER(${providersTable.country}) NOT IN ('US', 'USA', 'UNITED STATES')`);
         if (country) conditions.push(eq(providersTable.country, country));
         if (state) conditions.push(eq(providersTable.stateRegion, state));
@@ -171,17 +210,18 @@ router.post("/search", async (req, res): Promise<void> => {
           .limit(pageSz);
 
         dbFormatted = (dbResults as any[])
-          .filter((r) => !isUsCountry(r.country))
+          .filter((r) => r && !isUsCountry(r.country))
           .map((r) => ({
             ...r,
             timestampFound: r.timestampFound?.toISOString?.() ?? new Date().toISOString(),
           }));
 
         try {
+          const histQuery = `${query} | ${country || ""} | ${city || ""}`.slice(0, 200);
           const [searchRecord] = await db
             .insert(searchHistoryTable)
             .values({
-              query: `${query} | ${country || ""} | ${city || ""}`,
+              query: histQuery,
               resultCount: multi.results.length + dbFormatted.length,
             })
             .returning();
@@ -194,13 +234,15 @@ router.post("/search", async (req, res): Promise<void> => {
       }
     }
 
-    // Prefer multi-mode provider hits; append DB rows not already represented
     const live = multi.results.map((h, i) => toApiResult(h, i));
     const seen = new Set(
-      live.map((r) => `${(r.website || r.sourceUrl || "").toLowerCase()}|${r.providerName.toLowerCase()}`),
+      live.map(
+        (r) =>
+          `${(r.website || r.sourceUrl || "").toLowerCase()}|${String(r.providerName || "").toLowerCase()}`,
+      ),
     );
     for (const row of dbFormatted) {
-      const key = `${(row.website || row.sourceUrl || "").toLowerCase()}|${String(row.providerName).toLowerCase()}`;
+      const key = `${(row.website || row.sourceUrl || "").toLowerCase()}|${String(row.providerName || "").toLowerCase()}`;
       if (seen.has(key)) continue;
       seen.add(key);
       live.push(row);
@@ -241,8 +283,10 @@ router.post("/search", async (req, res): Promise<void> => {
     });
   } catch (err: unknown) {
     logger.error({ err }, "Search endpoint error");
-    const message = err instanceof Error ? err.message : "Search failed";
-    res.status(500).json({ error: "Internal server error", message });
+    res.status(500).json({
+      error: "Internal server error",
+      message: "Something went wrong while searching. Please try again.",
+    });
   }
 });
 
@@ -250,12 +294,16 @@ router.get("/search/suggestions", async (req, res): Promise<void> => {
   try {
     const parsed = GetSearchSuggestionsQueryParams.safeParse(req.query);
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.message });
+      res.status(400).json({ error: "Invalid query" });
       return;
     }
 
-    // Static provider-type suggestions (non-US portal)
-    const q = parsed.data.q.toLowerCase();
+    const q = sanitizeLikeFragment(String(parsed.data.q || ""), 80).toLowerCase();
+    if (!q) {
+      res.json([]);
+      return;
+    }
+
     const types = [
       { text: "Occupational Health", category: "provider_type" },
       { text: "Clinic", category: "provider_type" },
@@ -273,7 +321,7 @@ router.get("/search/suggestions", async (req, res): Promise<void> => {
     }
 
     try {
-      const pattern = `%${parsed.data.q}%`;
+      const pattern = `%${q}%`;
       const services = await db
         .selectDistinct({
           normalizedService: pricesTable.normalizedService,
@@ -290,11 +338,13 @@ router.get("/search/suggestions", async (req, res): Promise<void> => {
 
       res.json([
         ...types,
-        ...services.map((s) => ({
-          text: s.normalizedService,
-          billingCode: s.billingCode,
-          category: "service",
-        })),
+        ...services
+          .filter((s) => s.normalizedService)
+          .map((s) => ({
+            text: String(s.normalizedService).slice(0, 120),
+            billingCode: s.billingCode ? String(s.billingCode).slice(0, 20) : undefined,
+            category: "service",
+          })),
       ]);
     } catch {
       res.json(types);
@@ -308,7 +358,7 @@ router.get("/search/suggestions", async (req, res): Promise<void> => {
 router.get("/search/history", async (req, res): Promise<void> => {
   try {
     const parsed = GetSearchHistoryQueryParams.safeParse(req.query);
-    const limit = parsed.success ? (parsed.data.limit ?? 20) : 20;
+    const limit = clampInt(parsed.success ? parsed.data.limit : 20, 1, 50, 20);
     if (!hasDb()) {
       res.json([]);
       return;
@@ -322,9 +372,9 @@ router.get("/search/history", async (req, res): Promise<void> => {
     res.json(
       history.map((h) => ({
         id: h.id,
-        query: h.query,
+        query: String(h.query || "").slice(0, 200),
         resultCount: h.resultCount,
-        searchedAt: h.searchedAt.toISOString(),
+        searchedAt: h.searchedAt?.toISOString?.() ?? new Date().toISOString(),
       })),
     );
   } catch (err) {
