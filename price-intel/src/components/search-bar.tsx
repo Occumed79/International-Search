@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Search, MapPin, SlidersHorizontal, Globe, ChevronDown, Activity, X } from "lucide-react";
+import { Search, MapPin, SlidersHorizontal, Globe, Activity, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -12,7 +12,7 @@ import type { SearchRequest } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
 
 const COUNTRIES = [
-  { code: "", label: "Global" },
+  { code: "_global", label: "Global" },
   { code: "US", label: "United States" },
   { code: "GB", label: "United Kingdom" },
   { code: "CA", label: "Canada" },
@@ -32,6 +32,18 @@ const COUNTRIES = [
   { code: "AE", label: "UAE" },
 ];
 
+/** Map Select values to API country (Global → undefined). */
+function toApiCountry(code: string): string | undefined {
+  if (!code || code === "_global") return undefined;
+  return code;
+}
+
+/** Map API country back to Select value. */
+function toSelectCountry(code?: string | null): string {
+  if (!code) return "_global";
+  return code;
+}
+
 export function SearchBar({
   onSearch,
   isCompact,
@@ -45,7 +57,7 @@ export function SearchBar({
 }) {
   const [query, setQuery] = useState(currentQuery?.query || "");
   const [location, setLocation] = useState(currentQuery?.city || "");
-  const [country, setCountry] = useState(currentQuery?.country || "");
+  const [country, setCountry] = useState(toSelectCountry(currentQuery?.country));
   const [radius, setRadius] = useState(currentQuery?.radiusMiles ?? 50);
   const [showFilters, setShowFilters] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -82,7 +94,7 @@ export function SearchBar({
     if (currentQuery) {
       setQuery(currentQuery.query);
       setLocation(currentQuery.city || "");
-      setCountry(currentQuery.country || "");
+      setCountry(toSelectCountry(currentQuery.country));
       setRadius(currentQuery.radiusMiles ?? 50);
       setFilters({
         cashPayOnly: currentQuery.cashPayOnly || false,
@@ -97,32 +109,29 @@ export function SearchBar({
     }
   }, [currentQuery]);
 
+  const buildRequest = (q: string): SearchRequest => ({
+    query: q.trim(),
+    city: location.trim() || undefined,
+    country: toApiCountry(country),
+    radiusMiles: radius,
+    ...filters,
+  });
+
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!query.trim()) return;
     setShowSuggestions(false);
-    onSearch({
-      query: query.trim(),
-      city: location.trim() || undefined,
-      country: country || undefined,
-      radiusMiles: radius,
-      ...filters,
-    });
+    onSearch(buildRequest(query));
   };
 
   const handleSelectSuggestion = (suggestionText: string) => {
     setQuery(suggestionText);
     setShowSuggestions(false);
-    onSearch({
-      query: suggestionText,
-      city: location.trim() || undefined,
-      country: country || undefined,
-      radiusMiles: radius,
-      ...filters,
-    });
+    onSearch(buildRequest(suggestionText));
   };
 
-  const activeFiltersCount = Object.values(filters).filter(Boolean).length + (country ? 1 : 0);
+  const activeFiltersCount =
+    Object.values(filters).filter(Boolean).length + (country !== "_global" ? 1 : 0);
 
   const resetFilters = () => {
     setFilters({
@@ -130,7 +139,7 @@ export function SearchBar({
       imagingOnly: false, labOnly: false, urgentCareOnly: false,
       dentalOnly: false, telehealthOnly: false,
     });
-    setCountry("");
+    setCountry("_global");
     setRadius(50);
   };
 
@@ -183,13 +192,13 @@ export function SearchBar({
             <SelectTrigger
               className={`border-0 ring-0 focus:ring-0 shadow-none bg-transparent font-medium ${
                 isCompact ? "h-10 text-sm w-36" : "h-14 text-base w-40"
-              } ${country ? "text-primary" : "text-muted-foreground"}`}
+              } ${country !== "_global" ? "text-primary" : "text-muted-foreground"}`}
             >
               <SelectValue placeholder="Global" />
             </SelectTrigger>
             <SelectContent className="glass-panel border-border/40 shadow-2xl max-h-72">
               {COUNTRIES.map((c) => (
-                <SelectItem key={c.code} value={c.code || "_global"}>
+                <SelectItem key={c.code} value={c.code}>
                   {c.label}
                 </SelectItem>
               ))}
@@ -360,4 +369,3 @@ export function SearchBar({
     </div>
   );
 }
-
