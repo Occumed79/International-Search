@@ -1,9 +1,8 @@
 import { useState, useEffect, useRef } from "react";
-import { Search, MapPin, SlidersHorizontal, Globe, Activity, X } from "lucide-react";
+import { Search, MapPin, SlidersHorizontal, Globe, Activity, X, Building2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
@@ -11,38 +10,47 @@ import { useGetSearchSuggestions } from "@workspace/api-client-react";
 import type { SearchRequest } from "@workspace/api-client-react";
 import { Badge } from "@/components/ui/badge";
 
+/** Non-US countries only */
 const COUNTRIES = [
-  { code: "_global", label: "Global" },
-  { code: "US", label: "United States" },
-  { code: "GB", label: "United Kingdom" },
+  { code: "MX", label: "Mexico" },
   { code: "CA", label: "Canada" },
+  { code: "GB", label: "United Kingdom" },
   { code: "AU", label: "Australia" },
   { code: "DE", label: "Germany" },
   { code: "FR", label: "France" },
-  { code: "IN", label: "India" },
-  { code: "MX", label: "Mexico" },
-  { code: "SG", label: "Singapore" },
-  { code: "TH", label: "Thailand" },
-  { code: "TR", label: "Turkey" },
   { code: "ES", label: "Spain" },
   { code: "IT", label: "Italy" },
-  { code: "JP", label: "Japan" },
+  { code: "PT", label: "Portugal" },
   { code: "BR", label: "Brazil" },
-  { code: "ZA", label: "South Africa" },
+  { code: "AR", label: "Argentina" },
+  { code: "CL", label: "Chile" },
+  { code: "CO", label: "Colombia" },
+  { code: "IN", label: "India" },
+  { code: "SG", label: "Singapore" },
+  { code: "TH", label: "Thailand" },
+  { code: "JP", label: "Japan" },
+  { code: "KR", label: "South Korea" },
   { code: "AE", label: "UAE" },
+  { code: "ZA", label: "South Africa" },
+  { code: "TR", label: "Turkey" },
+  { code: "PL", label: "Poland" },
+  { code: "NL", label: "Netherlands" },
+  { code: "IE", label: "Ireland" },
+  { code: "NZ", label: "New Zealand" },
+  { code: "PH", label: "Philippines" },
+  { code: "MY", label: "Malaysia" },
 ];
 
-/** Map Select values to API country (Global → undefined). */
-function toApiCountry(code: string): string | undefined {
-  if (!code || code === "_global") return undefined;
-  return code;
-}
-
-/** Map API country back to Select value. */
-function toSelectCountry(code?: string | null): string {
-  if (!code) return "_global";
-  return code;
-}
+const PROVIDER_TYPES = [
+  { code: "occupational_health", label: "Occupational Health" },
+  { code: "clinic", label: "Clinic" },
+  { code: "hospital", label: "Hospital" },
+  { code: "urgent_care", label: "Urgent Care" },
+  { code: "imaging_center", label: "Imaging Center" },
+  { code: "lab", label: "Laboratory" },
+  { code: "dental", label: "Dental" },
+  { code: "pharmacy", label: "Pharmacy" },
+];
 
 export function SearchBar({
   onSearch,
@@ -55,27 +63,27 @@ export function SearchBar({
   isLoading?: boolean;
   currentQuery?: SearchRequest | null;
 }) {
-  const [query, setQuery] = useState(currentQuery?.query || "");
+  const [providerType, setProviderType] = useState(
+    (currentQuery as any)?.providerType || "occupational_health",
+  );
   const [location, setLocation] = useState(currentQuery?.city || "");
-  const [country, setCountry] = useState(toSelectCountry(currentQuery?.country));
-  const [radius, setRadius] = useState(currentQuery?.radiusMiles ?? 50);
+  const [country, setCountry] = useState(currentQuery?.country || "MX");
+  const [radius, setRadius] = useState(currentQuery?.radiusMiles ?? 25);
   const [showFilters, setShowFilters] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [query, setQuery] = useState(currentQuery?.query || "");
 
-  const [filters, setFilters] = useState({
-    cashPayOnly: currentQuery?.cashPayOnly || false,
-    hospitalOnly: currentQuery?.hospitalOnly || false,
-    clinicOnly: currentQuery?.clinicOnly || false,
-    imagingOnly: currentQuery?.imagingOnly || false,
-    labOnly: currentQuery?.labOnly || false,
-    urgentCareOnly: currentQuery?.urgentCareOnly || false,
-    dentalOnly: currentQuery?.dentalOnly || false,
-    telehealthOnly: currentQuery?.telehealthOnly || false,
-  });
+  const typeLabel =
+    PROVIDER_TYPES.find((t) => t.code === providerType)?.label || "Clinic";
 
   const { data: suggestions } = useGetSearchSuggestions(
-    { q: query },
-    { query: { enabled: query.length > 2, queryKey: ["/api/search/suggestions", { q: query }] } }
+    { q: query || typeLabel },
+    {
+      query: {
+        enabled: (query || typeLabel).length > 1,
+        queryKey: ["/api/search/suggestions", { q: query || typeLabel }],
+      },
+    },
   );
 
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -92,55 +100,45 @@ export function SearchBar({
 
   useEffect(() => {
     if (currentQuery) {
-      setQuery(currentQuery.query);
+      setQuery(currentQuery.query || "");
       setLocation(currentQuery.city || "");
-      setCountry(toSelectCountry(currentQuery.country));
-      setRadius(currentQuery.radiusMiles ?? 50);
-      setFilters({
-        cashPayOnly: currentQuery.cashPayOnly || false,
-        hospitalOnly: currentQuery.hospitalOnly || false,
-        clinicOnly: currentQuery.clinicOnly || false,
-        imagingOnly: currentQuery.imagingOnly || false,
-        labOnly: currentQuery.labOnly || false,
-        urgentCareOnly: currentQuery.urgentCareOnly || false,
-        dentalOnly: currentQuery.dentalOnly || false,
-        telehealthOnly: currentQuery.telehealthOnly || false,
-      });
+      if (currentQuery.country && currentQuery.country !== "US") {
+        setCountry(currentQuery.country);
+      }
+      setRadius(currentQuery.radiusMiles ?? 25);
+      if ((currentQuery as any).providerType) {
+        setProviderType((currentQuery as any).providerType);
+      }
     }
   }, [currentQuery]);
 
-  const buildRequest = (q: string): SearchRequest => ({
-    query: q.trim(),
+  const buildRequest = (): SearchRequest => ({
+    query: (query.trim() || typeLabel).trim(),
     city: location.trim() || undefined,
-    country: toApiCountry(country),
+    country: country || undefined,
     radiusMiles: radius,
-    ...filters,
-  });
+    providerType,
+  } as SearchRequest);
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!query.trim()) return;
+    if (!country) return;
     setShowSuggestions(false);
-    onSearch(buildRequest(query));
+    onSearch(buildRequest());
   };
 
   const handleSelectSuggestion = (suggestionText: string) => {
+    const match = PROVIDER_TYPES.find(
+      (t) => t.label.toLowerCase() === suggestionText.toLowerCase(),
+    );
+    if (match) setProviderType(match.code);
     setQuery(suggestionText);
     setShowSuggestions(false);
-    onSearch(buildRequest(suggestionText));
-  };
-
-  const activeFiltersCount =
-    Object.values(filters).filter(Boolean).length + (country !== "_global" ? 1 : 0);
-
-  const resetFilters = () => {
-    setFilters({
-      cashPayOnly: false, hospitalOnly: false, clinicOnly: false,
-      imagingOnly: false, labOnly: false, urgentCareOnly: false,
-      dentalOnly: false, telehealthOnly: false,
-    });
-    setCountry("_global");
-    setRadius(50);
+    onSearch({
+      ...buildRequest(),
+      query: suggestionText,
+      providerType: match?.code || providerType,
+    } as SearchRequest);
   };
 
   return (
@@ -148,9 +146,7 @@ export function SearchBar({
       <form
         onSubmit={handleSubmit}
         className={`flex flex-col sm:flex-row items-stretch transition-all duration-300 ${
-          isCompact
-            ? "p-1.5 gap-1.5 rounded-2xl"
-            : "p-2.5 gap-2.5 rounded-3xl"
+          isCompact ? "p-1.5 gap-1.5 rounded-2xl" : "p-2.5 gap-2.5 rounded-3xl"
         }`}
         style={{
           background: isCompact ? "rgba(18, 6, 36, 0.82)" : "rgba(22, 8, 42, 0.75)",
@@ -160,41 +156,39 @@ export function SearchBar({
           boxShadow: "0 8px 40px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.06)",
         }}
       >
-        {/* Service query input */}
-        <div className="relative flex-[1.5] flex items-center group">
-          <Search
-            className={`absolute left-4 w-5 h-5 transition-colors ${
-              query ? "text-primary" : "text-muted-foreground group-focus-within:text-foreground"
-            }`}
-          />
-          <Input
-            value={query}
-            onChange={(e) => { setQuery(e.target.value); setShowSuggestions(true); }}
-            onFocus={() => setShowSuggestions(true)}
-            placeholder="Service, CPT code, or specialty (e.g. MRI Brain, 70553)"
-            className={`pl-12 bg-transparent border-0 ring-0 focus-visible:ring-0 shadow-none text-base h-auto placeholder:text-muted-foreground/70 ${
-              isCompact ? "py-2.5" : "py-4 text-lg"
-            }`}
-          />
-          {query && (
-            <button type="button" onClick={() => setQuery("")} className="absolute right-3 text-muted-foreground hover:text-foreground">
-              <X className="w-4 h-4" />
-            </button>
-          )}
+        {/* Provider type */}
+        <div className="flex items-center gap-1 px-2 min-w-[160px]">
+          <Building2 className="w-4 h-4 text-muted-foreground shrink-0" />
+          <Select value={providerType} onValueChange={setProviderType}>
+            <SelectTrigger
+              className={`border-0 ring-0 focus:ring-0 shadow-none bg-transparent font-medium text-primary ${
+                isCompact ? "h-10 text-sm" : "h-14 text-base"
+              }`}
+            >
+              <SelectValue placeholder="Provider type" />
+            </SelectTrigger>
+            <SelectContent className="glass-panel border-border/40 shadow-2xl max-h-72">
+              {PROVIDER_TYPES.map((t) => (
+                <SelectItem key={t.code} value={t.code}>
+                  {t.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         <div className="hidden sm:block w-px bg-border/40 my-2" />
 
-        {/* Country selector */}
+        {/* Country — no US */}
         <div className="flex items-center gap-1 px-2">
           <Globe className="w-4 h-4 text-muted-foreground shrink-0" />
           <Select value={country} onValueChange={setCountry}>
             <SelectTrigger
               className={`border-0 ring-0 focus:ring-0 shadow-none bg-transparent font-medium ${
                 isCompact ? "h-10 text-sm w-36" : "h-14 text-base w-40"
-              } ${country !== "_global" ? "text-primary" : "text-muted-foreground"}`}
+              } text-primary`}
             >
-              <SelectValue placeholder="Global" />
+              <SelectValue placeholder="Country" />
             </SelectTrigger>
             <SelectContent className="glass-panel border-border/40 shadow-2xl max-h-72">
               {COUNTRIES.map((c) => (
@@ -208,7 +202,7 @@ export function SearchBar({
 
         <div className="hidden sm:block w-px bg-border/40 my-2" />
 
-        {/* City/region input */}
+        {/* City */}
         <div className="relative flex-1 flex items-center group">
           <MapPin
             className={`absolute left-4 w-5 h-5 transition-colors ${
@@ -218,7 +212,7 @@ export function SearchBar({
           <Input
             value={location}
             onChange={(e) => setLocation(e.target.value)}
-            placeholder="City or region"
+            placeholder="City or region (e.g. Guadalajara)"
             className={`pl-12 bg-transparent border-0 ring-0 focus-visible:ring-0 shadow-none text-base h-auto placeholder:text-muted-foreground/70 ${
               isCompact ? "py-2.5" : "py-4 text-lg"
             }`}
@@ -227,7 +221,36 @@ export function SearchBar({
 
         <div className="hidden sm:block w-px bg-border/40 my-2" />
 
-        {/* Filters + Search */}
+        {/* Optional free-text refine */}
+        <div className="relative flex-1 flex items-center group max-w-xs">
+          <Search
+            className={`absolute left-4 w-5 h-5 transition-colors ${
+              query ? "text-primary" : "text-muted-foreground group-focus-within:text-foreground"
+            }`}
+          />
+          <Input
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setShowSuggestions(true);
+            }}
+            onFocus={() => setShowSuggestions(true)}
+            placeholder="Optional keywords"
+            className={`pl-12 bg-transparent border-0 ring-0 focus-visible:ring-0 shadow-none text-base h-auto placeholder:text-muted-foreground/70 ${
+              isCompact ? "py-2.5" : "py-4 text-lg"
+            }`}
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              className="absolute right-3 text-muted-foreground hover:text-foreground"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
         <div className="flex items-center gap-1.5 sm:pl-1.5">
           <Popover open={showFilters} onOpenChange={setShowFilters}>
             <PopoverTrigger asChild>
@@ -237,87 +260,42 @@ export function SearchBar({
                 size="icon"
                 className={`relative hover:bg-black/5 dark:hover:bg-white/10 ${
                   isCompact ? "w-10 h-10 rounded-xl" : "w-12 h-12 rounded-xl"
-                } ${activeFiltersCount > 0 ? "text-primary" : "text-muted-foreground"}`}
+                } text-muted-foreground`}
               >
                 <SlidersHorizontal className="w-5 h-5" />
-                {activeFiltersCount > 0 && (
-                  <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-primary ring-2 ring-background" />
-                )}
               </Button>
             </PopoverTrigger>
             <PopoverContent
-              className="w-96 p-5 shadow-2xl rounded-2xl"
-              style={{ background: "rgba(18,6,36,0.96)", backdropFilter: "blur(28px)", border: "1px solid rgba(160,80,255,0.22)" }}
+              className="w-80 p-5 shadow-2xl rounded-2xl"
+              style={{
+                background: "rgba(18,6,36,0.96)",
+                backdropFilter: "blur(28px)",
+                border: "1px solid rgba(160,80,255,0.22)",
+              }}
               align="end"
               sideOffset={12}
             >
               <div className="space-y-5">
-                <div className="flex items-center justify-between pb-2 border-b border-border/40">
-                  <h4 className="font-semibold leading-none tracking-tight">Intelligence Filters</h4>
-                  {activeFiltersCount > 0 && (
-                    <Button variant="ghost" size="sm" className="h-auto py-1 px-2 text-xs" onClick={resetFilters}>
-                      Reset all
-                    </Button>
-                  )}
-                </div>
-
-                {/* Radius */}
+                <h4 className="font-semibold leading-none tracking-tight">Search radius</h4>
                 <div className="space-y-3">
                   <div className="flex justify-between">
-                    <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Radius</h5>
+                    <Label className="text-xs text-muted-foreground">Around city</Label>
                     <span className="text-xs font-medium text-primary">{radius} mi</span>
                   </div>
                   <Slider
-                    min={10} max={500} step={10}
+                    min={5}
+                    max={100}
+                    step={5}
                     value={[radius]}
                     onValueChange={([v]) => setRadius(v)}
-                    className="w-full"
                   />
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>10 mi</span><span>500 mi</span>
-                  </div>
                 </div>
-
-                <div className="grid grid-cols-2 gap-5">
-                  {/* Price Type */}
-                  <div className="space-y-3">
-                    <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Price Type</h5>
-                    <div className="flex items-center space-x-2">
-                      <Checkbox
-                        id="cashPayOnly"
-                        checked={filters.cashPayOnly}
-                        onCheckedChange={(c) => setFilters({ ...filters, cashPayOnly: !!c })}
-                      />
-                      <Label htmlFor="cashPayOnly" className="text-sm cursor-pointer">Cash-Pay Only</Label>
-                    </div>
-                  </div>
-
-                  {/* Facility Type */}
-                  <div className="space-y-3">
-                    <h5 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Facility</h5>
-                    {[
-                      { id: "hospitalOnly", label: "Hospital" },
-                      { id: "clinicOnly", label: "Clinic" },
-                      { id: "imagingOnly", label: "Imaging" },
-                      { id: "labOnly", label: "Lab" },
-                      { id: "urgentCareOnly", label: "Urgent Care" },
-                      { id: "dentalOnly", label: "Dental" },
-                      { id: "telehealthOnly", label: "Telehealth" },
-                    ].map(({ id, label }) => (
-                      <div key={id} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={id}
-                          checked={filters[id as keyof typeof filters]}
-                          onCheckedChange={(c) => setFilters({ ...filters, [id]: !!c })}
-                        />
-                        <Label htmlFor={id} className="text-sm cursor-pointer">{label}</Label>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
+                <p className="text-xs text-muted-foreground">
+                  Sources: OpenStreetMap, Wikidata, and optional SearXNG web search. United States is
+                  excluded.
+                </p>
                 <Button type="button" className="w-full" onClick={() => setShowFilters(false)}>
-                  Apply Filters
+                  Done
                 </Button>
               </div>
             </PopoverContent>
@@ -325,11 +303,9 @@ export function SearchBar({
 
           <Button
             type="submit"
-            disabled={isLoading || !query.trim()}
+            disabled={isLoading || !country}
             className={`font-semibold ${
-              isCompact
-                ? "rounded-xl px-5 h-10 text-sm"
-                : "rounded-2xl px-8 h-14 text-base"
+              isCompact ? "rounded-xl px-5 h-10 text-sm" : "rounded-2xl px-8 h-14 text-base"
             }`}
           >
             {isLoading ? (
@@ -337,15 +313,20 @@ export function SearchBar({
             ) : (
               <Search className="w-4 h-4" />
             )}
-            <span className={isCompact ? "hidden sm:inline ml-2" : "ml-2"}>Search</span>
+            <span className={isCompact ? "hidden sm:inline ml-2" : "ml-2"}>Find providers</span>
           </Button>
         </div>
       </form>
 
-      {/* Suggestions Dropdown */}
       {showSuggestions && suggestions && suggestions.length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-2 z-50 rounded-2xl overflow-hidden"
-          style={{ background: "rgba(18,6,36,0.95)", backdropFilter: "blur(24px)", border: "1px solid rgba(160,80,255,0.22)", boxShadow: "0 16px 48px rgba(0,0,0,0.65)" }}
+        <div
+          className="absolute top-full left-0 right-0 mt-2 z-50 rounded-2xl overflow-hidden"
+          style={{
+            background: "rgba(18,6,36,0.95)",
+            backdropFilter: "blur(24px)",
+            border: "1px solid rgba(160,80,255,0.22)",
+            boxShadow: "0 16px 48px rgba(0,0,0,0.65)",
+          }}
         >
           {suggestions.map((s, i) => (
             <button
@@ -354,14 +335,11 @@ export function SearchBar({
               className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-primary/5 transition-colors border-b border-border/20 last:border-0"
               onClick={() => handleSelectSuggestion(s.text)}
             >
-              <Search className="w-4 h-4 text-muted-foreground shrink-0" />
-              <div>
-                <div className="text-sm font-medium">{s.text}</div>
-                {s.billingCode && (
-                  <div className="text-xs text-muted-foreground font-mono">CPT: {s.billingCode}</div>
-                )}
-              </div>
-              <Badge variant="secondary" className="ml-auto text-xs">{s.category}</Badge>
+              <Building2 className="w-4 h-4 text-muted-foreground shrink-0" />
+              <div className="text-sm font-medium">{s.text}</div>
+              <Badge variant="secondary" className="ml-auto text-xs">
+                {s.category}
+              </Badge>
             </button>
           ))}
         </div>

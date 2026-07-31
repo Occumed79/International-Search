@@ -1,32 +1,28 @@
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { useSearchPrices, useGetStatsSummary, useGetTopServices } from "@workspace/api-client-react";
-import type { SearchRequest, PriceResult, SearchResponse } from "@workspace/api-client-react";
+import { useSearchPrices, useGetStatsSummary } from "@workspace/api-client-react";
+import type { SearchRequest, SearchResponse } from "@workspace/api-client-react";
 import {
   Activity, Building2, Database, Stethoscope,
-  Search, Globe, Microscope, HeartPulse, Pill, Zap,
+  Globe, HeartPulse, Microscope, Zap, Pill,
 } from "lucide-react";
 import { SearchBar } from "@/components/search-bar";
 import { MapView } from "@/components/map-view";
 import { ResultsPanel } from "@/components/results-panel";
 
-const QUICK_SERVICES = [
-  { query: "MRI brain without contrast",    icon: Microscope,  country: "" },
-  { query: "treadmill stress test",          icon: HeartPulse,  country: "" },
-  { query: "chest X-ray 2-view",            icon: Activity,    country: "" },
-  { query: "colonoscopy self-pay",           icon: Stethoscope, country: "" },
-  { query: "QuantiFERON blood test",         icon: Microscope,  country: "" },
-  { query: "DOT physical exam",              icon: Building2,   country: "US" },
-  { query: "FAA medical exam",               icon: Building2,   country: "US" },
-  { query: "dental exam with bitewings",     icon: Building2,   country: "" },
-  { query: "mammogram screening",            icon: HeartPulse,  country: "" },
-  { query: "CBC lab panel",                  icon: Microscope,  country: "" },
-  { query: "echocardiogram",                 icon: HeartPulse,  country: "" },
-  { query: "urgent care visit",              icon: Zap,         country: "" },
-  { query: "travel vaccines",                icon: Globe,       country: "" },
-  { query: "gallbladder ultrasound",         icon: Activity,    country: "" },
-  { query: "drug screen 5-panel",            icon: Pill,        country: "" },
-  { query: "hip replacement self-pay",       icon: Building2,   country: "" },
+const QUICK_PROVIDERS = [
+  { query: "Occupational Health", providerType: "occupational_health", country: "MX", city: "Guadalajara", icon: Building2 },
+  { query: "Occupational Health", providerType: "occupational_health", country: "MX", city: "Mexico City", icon: Building2 },
+  { query: "Hospital", providerType: "hospital", country: "GB", city: "London", icon: HeartPulse },
+  { query: "Clinic", providerType: "clinic", country: "CA", city: "Toronto", icon: Stethoscope },
+  { query: "Dental", providerType: "dental", country: "ES", city: "Madrid", icon: Building2 },
+  { query: "Laboratory", providerType: "lab", country: "DE", city: "Berlin", icon: Microscope },
+  { query: "Urgent Care", providerType: "urgent_care", country: "AU", city: "Sydney", icon: Zap },
+  { query: "Imaging Center", providerType: "imaging_center", country: "FR", city: "Paris", icon: Activity },
+  { query: "Pharmacy", providerType: "pharmacy", country: "BR", city: "S\u00e3o Paulo", icon: Pill },
+  { query: "Clinic", providerType: "clinic", country: "TH", city: "Bangkok", icon: Globe },
+  { query: "Hospital", providerType: "hospital", country: "IN", city: "Mumbai", icon: HeartPulse },
+  { query: "Occupational Health", providerType: "occupational_health", country: "CA", city: "Vancouver", icon: Building2 },
 ];
 
 function StatCard({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
@@ -58,13 +54,17 @@ export function Home() {
   const [searchQuery, setSearchQuery] = useState<SearchRequest | null>(null);
   const searchMutation = useSearchPrices();
   const { data: stats } = useGetStatsSummary({ query: { queryKey: ["/api/stats/summary"] } });
-  const { data: topServices } = useGetTopServices(
-    { limit: 12 },
-    { query: { queryKey: ["/api/stats/top-services", { limit: 12 }] } }
-  );
   const { toast } = useToast();
 
   const handleSearch = (query: SearchRequest) => {
+    if (query.country === "US" || query.country === "USA") {
+      toast({
+        title: "US not supported",
+        description: "This portal is international only. Pick a non-US country.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSearchQuery(query);
     searchMutation.mutate(
       { data: query },
@@ -73,7 +73,7 @@ export function Home() {
           const message = err instanceof Error ? err.message : "Search failed — please try again";
           toast({ title: "Search error", description: message, variant: "destructive" });
         },
-      }
+      },
     );
   };
 
@@ -82,12 +82,9 @@ export function Home() {
 
   return (
     <div className="h-full w-full flex flex-col">
-      {/* ── Search header ── */}
       <div
         className={`transition-all duration-500 ease-in-out flex flex-col items-center justify-center px-6 ${
-          hasSearched
-            ? "py-4 flex-none z-10"
-            : "flex-1 py-12 overflow-y-auto"
+          hasSearched ? "py-4 flex-none z-10" : "flex-1 py-12 overflow-y-auto"
         }`}
         style={hasSearched ? {
           background: "rgba(14,4,28,0.80)",
@@ -98,7 +95,6 @@ export function Home() {
       >
         {!hasSearched && (
           <div className="text-center mb-10 max-w-3xl mx-auto space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            {/* Portal badge */}
             <div
               className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold mb-2"
               style={{
@@ -107,11 +103,10 @@ export function Home() {
                 border: "1px solid rgba(160,80,255,0.25)",
               }}
             >
-              <Activity className="w-3.5 h-3.5" />
-              <span>Portal 5 · Global Price Intelligence Terminal</span>
+              <Globe className="w-3.5 h-3.5" />
+              <span>International Provider Finder · Non-US only</span>
             </div>
 
-            {/* Hero title */}
             <h1
               className="font-bold tracking-tight leading-tight"
               style={{
@@ -122,20 +117,20 @@ export function Home() {
                 backgroundClip: "text",
               }}
             >
-              Uncover Real Healthcare<br />Prices Worldwide
+              Find Healthcare Providers<br />Worldwide
             </h1>
 
             <p className="text-lg max-w-2xl mx-auto leading-relaxed" style={{ color: "rgba(255,255,255,0.55)" }}>
-              Search publicly posted out-of-pocket prices from clinics, hospitals, labs,
-              and specialists across the US and internationally.
+              Choose a country, city, and provider type — we search OpenStreetMap, Wikidata,
+              and optional web metasearch in parallel, then filter noise before you see results.
               <span className="block mt-1 text-sm" style={{ color: "rgba(255,255,255,0.32)" }}>
-                Only exact posted prices — no estimates, no fabrications.
+                United States is excluded from this portal.
               </span>
             </p>
           </div>
         )}
 
-        <div className={`w-full ${hasSearched ? "max-w-6xl" : "max-w-4xl"} transition-all duration-500`}>
+        <div className={`w-full ${hasSearched ? "max-w-6xl" : "max-w-5xl"} transition-all duration-500`}>
           <SearchBar
             onSearch={handleSearch}
             isCompact={hasSearched}
@@ -146,43 +141,48 @@ export function Home() {
 
         {!hasSearched && (
           <div className="w-full max-w-4xl mx-auto mt-12 space-y-10 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-200 fill-mode-both pb-12">
-            {/* Stats */}
             {stats && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard icon={Building2} label="Providers Analyzed"  value={stats.totalProviders.toLocaleString()} />
-                <StatCard icon={Database}  label="Price Records"       value={stats.totalPrices.toLocaleString()} />
-                <StatCard icon={Globe}     label="Countries Covered"   value={stats.countriesCovered.toLocaleString()} />
-                <StatCard icon={Activity}  label="Data Sources"        value={stats.totalSources.toLocaleString()} />
+                <StatCard icon={Building2} label="Providers Indexed" value={stats.totalProviders.toLocaleString()} />
+                <StatCard icon={Database} label="Records" value={stats.totalPrices.toLocaleString()} />
+                <StatCard icon={Globe} label="Countries" value={stats.countriesCovered.toLocaleString()} />
+                <StatCard icon={Activity} label="Sources" value={String(stats.totalSources ?? 3)} />
               </div>
             )}
 
-            {/* Quick services */}
             <div className="space-y-4">
               <div
                 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em]"
                 style={{ color: "rgba(200,140,255,0.55)" }}
               >
                 <Stethoscope className="w-4 h-4" />
-                <span>Quick Search — Common Services</span>
+                <span>Quick search — provider type + city</span>
               </div>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {QUICK_SERVICES.map((svc) => {
+                {QUICK_PROVIDERS.map((svc) => {
                   const Icon = svc.icon;
                   return (
                     <button
-                      key={svc.query}
-                      onClick={() => handleSearch({ query: svc.query, country: svc.country || undefined })}
+                      key={`${svc.providerType}-${svc.city}`}
+                      onClick={() =>
+                        handleSearch({
+                          query: svc.query,
+                          country: svc.country,
+                          city: svc.city,
+                          providerType: svc.providerType,
+                        } as SearchRequest)
+                      }
                       className="p-3.5 text-left transition-all group flex items-start gap-2.5 rounded-xl"
                       style={{
                         background: "rgba(25,10,45,0.55)",
                         border: "1px solid rgba(160,80,255,0.14)",
                         backdropFilter: "blur(16px)",
                       }}
-                      onMouseEnter={e => {
+                      onMouseEnter={(e) => {
                         (e.currentTarget as HTMLElement).style.background = "rgba(40,15,70,0.70)";
                         (e.currentTarget as HTMLElement).style.borderColor = "rgba(180,100,255,0.30)";
                       }}
-                      onMouseLeave={e => {
+                      onMouseLeave={(e) => {
                         (e.currentTarget as HTMLElement).style.background = "rgba(25,10,45,0.55)";
                         (e.currentTarget as HTMLElement).style.borderColor = "rgba(160,80,255,0.14)";
                       }}
@@ -193,59 +193,20 @@ export function Home() {
                       >
                         <Icon className="w-3.5 h-3.5" style={{ color: "rgba(200,140,255,0.80)" }} />
                       </div>
-                      <span className="font-medium text-sm leading-tight line-clamp-2" style={{ color: "rgba(255,255,255,0.78)" }}>
-                        {svc.query}
-                      </span>
+                      <div>
+                        <span className="font-medium text-sm leading-tight block" style={{ color: "rgba(255,255,255,0.78)" }}>
+                          {svc.query}
+                        </span>
+                        <span className="text-xs" style={{ color: "rgba(200,140,255,0.45)" }}>
+                          {svc.city}, {svc.country}
+                        </span>
+                      </div>
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            {/* Top services from DB */}
-            {topServices && topServices.length > 0 && (
-              <div className="space-y-4">
-                <div
-                  className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em]"
-                  style={{ color: "rgba(200,140,255,0.55)" }}
-                >
-                  <Search className="w-4 h-4" />
-                  <span>Frequently Queried</span>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                  {topServices.slice(0, 8).map((svc) => (
-                    <button
-                      key={svc.service}
-                      onClick={() => handleSearch({ query: svc.service })}
-                      className="p-4 text-left transition-all group flex flex-col justify-between h-20 rounded-xl"
-                      style={{
-                        background: "rgba(25,10,45,0.55)",
-                        border: "1px solid rgba(160,80,255,0.14)",
-                        backdropFilter: "blur(16px)",
-                      }}
-                      onMouseEnter={e => {
-                        (e.currentTarget as HTMLElement).style.background = "rgba(40,15,70,0.70)";
-                        (e.currentTarget as HTMLElement).style.borderColor = "rgba(180,100,255,0.30)";
-                      }}
-                      onMouseLeave={e => {
-                        (e.currentTarget as HTMLElement).style.background = "rgba(25,10,45,0.55)";
-                        (e.currentTarget as HTMLElement).style.borderColor = "rgba(160,80,255,0.14)";
-                      }}
-                    >
-                      <span className="font-medium text-sm line-clamp-2" style={{ color: "rgba(255,255,255,0.78)" }}>
-                        {svc.service}
-                      </span>
-                      <div className="flex items-center justify-between text-xs mt-1" style={{ color: "rgba(200,140,255,0.45)" }}>
-                        <span>{svc.searchCount} queries</span>
-                        <Search className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Source trust signals */}
             <div
               className="p-5 rounded-2xl space-y-3"
               style={{
@@ -255,14 +216,10 @@ export function Home() {
               }}
             >
               <div className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: "rgba(200,140,255,0.50)" }}>
-                Intelligence Sources
+                Multi-mode sources
               </div>
               <div className="flex flex-wrap gap-2">
-                {[
-                  "Hospital MRF (CMS)", "Provider Websites", "PDF Fee Schedules",
-                  "NPPES / NPI Registry", "DoltHub Transparency", "JSON-LD Extraction",
-                  "CMS Care Compare", "International Clinic Pages", "Lab & Imaging Menus",
-                ].map((s) => (
+                {["OpenStreetMap", "Wikidata", "SearXNG (optional)", "Local cache", "Domain filters"].map((s) => (
                   <span
                     key={s}
                     className="px-2.5 py-1 rounded-full text-xs font-medium"
@@ -281,7 +238,6 @@ export function Home() {
         )}
       </div>
 
-      {/* ── Results / Map ── */}
       {hasSearched && (
         <div className="flex-1 overflow-hidden flex">
           <div className="flex-1 overflow-hidden">
