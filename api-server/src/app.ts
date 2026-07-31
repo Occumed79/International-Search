@@ -1,4 +1,4 @@
-import express, { type Express } from "express";
+import express, { type Express, type Request, type Response, type NextFunction } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
 import path from "path";
@@ -48,5 +48,19 @@ if (staticDir) {
     res.json({ status: "ok", message: "International Search API is running. Frontend not built." });
   });
 }
+
+// Global error handler — always return JSON (never Express HTML error pages)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  logger.error({ err }, "Unhandled server error");
+  if (res.headersSent) {
+    res.end();
+    return;
+  }
+  res.status(500).json({
+    error: "Internal server error",
+    message: err?.message || "Something went wrong while processing the search.",
+  });
+});
 
 export default app;
