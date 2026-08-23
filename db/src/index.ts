@@ -7,6 +7,10 @@ const { Pool } = pg;
 // Neon is the single canonical persistent database for this app.
 const connectionString = process.env.NEON_DATABASE_URL;
 
+type AppPool = Omit<pg.Pool, "connect"> & {
+  connect(): Promise<pg.PoolClient>;
+};
+
 let _pool: pg.Pool | null = null;
 let _db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 
@@ -21,6 +25,6 @@ if (connectionString) {
 }
 
 // Export as the non-null type; callers must guard with `if (!db)` / `if (!pool)` before use.
-export const pool = _pool;
+export const pool = _pool as AppPool | null;
 export const db = _db as ReturnType<typeof drizzle<typeof schema>>;
 export * from "./schema";
