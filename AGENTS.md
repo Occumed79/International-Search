@@ -12,9 +12,11 @@ These rules are explicit user requirements for all future work on this repositor
 
 ## Integration behavior
 
-- Search the existing Occu-Med network first.
+- **Directory means “show me what is in our network.”** Directory and the other network-analysis workspaces operate on the canonical Occu-Med provider dataset already stored in Neon.
+- **Search means “show me what is not in our network.”** Search is an outside-network discovery / network-expansion workflow and must not return existing Occu-Med Directory providers as search results.
+- Outside-network Search must compare discovered candidates against the current Occu-Med provider Directory and exclude confirmed existing-network matches from its displayed results.
+- Do not add an `Occu-Med Network` result tab back to Search. Users who want existing-network providers should use Directory, Map, Coverage, Organizations, Pricing, Service Availability, Insights, or Coverage Gaps.
 - Keep explicit service availability separate from pricing; do not infer service availability merely because a price exists.
-- Outside-network discovery is optional and secondary to the existing network.
 - Keenable and TinyFish are the primary outside-network discovery APIs.
 - Exa is fallback-only.
 - Serper is removed and should not be reintroduced without explicit approval.
@@ -46,7 +48,7 @@ These rules are explicit user requirements for all future work on this repositor
 - **Do not add a portal switcher/drop-down menu to this app.** The header may link back to the Hub, but Global Intelligence does not need to reproduce the Hub's portal selector.
 - Do not display `Portal 5` or similar internal portal numbering in normal user-facing navigation.
 - **Do not expose backend implementation details, vendor/API names, fallback order, connector brands, database technology, or provider-routing logic in user-facing copy.** In particular, names such as Keenable, TinyFish, Exa, Serper, Neon, or similar infrastructure/vendor identifiers must remain backend-only unless the user explicitly asks to display them.
-- User-facing language should describe outcomes and functions: provider search, Occu-Med Network, additional providers, pricing, availability, agreements, services, coverage, insights, and network gaps.
+- User-facing language should describe outcomes and functions: outside-network provider search, Occu-Med Directory, pricing, availability, agreements, services, coverage, insights, and network gaps.
 - Do not rename the visible application identity or browser title as a side effect of backend or product-function changes unless the user explicitly requests those visible changes.
 
 ## Change discipline
