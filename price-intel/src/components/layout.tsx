@@ -1,66 +1,103 @@
 import { Link, useLocation } from "wouter";
-import { Search, Bookmark, History, Shield, Globe, ArrowLeft, LayoutDashboard } from "lucide-react";
+import {
+  ArrowLeft,
+  BarChart3,
+  Bookmark,
+  Building2,
+  Globe,
+  History,
+  Map,
+  Search,
+  Stethoscope,
+  TableProperties,
+  TrendingUp,
+  WalletCards,
+} from "lucide-react";
 
 const HUB_URL = (import.meta.env.VITE_HUB_URL as string | undefined) ?? "https://price-search-tool.onrender.com";
 
+const workspaceTabs = [
+  { view: "map", label: "Map", icon: Map },
+  { view: "directory", label: "Directory", icon: Stethoscope },
+  { view: "coverage", label: "Coverage", icon: TableProperties },
+  { view: "organizations", label: "Organizations", icon: Building2 },
+  { view: "pricing", label: "Pricing", icon: WalletCards },
+  { view: "availability", label: "Service Availability", icon: TableProperties },
+  { view: "insights", label: "Insights", icon: TrendingUp },
+  { view: "gaps", label: "Coverage Gaps", icon: BarChart3 },
+];
+
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
-
-  const navItems = [
-    { href: "/",               label: "Search",         icon: Search },
-    { href: "/command-center", label: "Command Center", icon: LayoutDashboard },
-    { href: "/bookmarks",      label: "Bookmarks",      icon: Bookmark },
-    { href: "/history",        label: "History",        icon: History },
-    { href: "/admin",          label: "Diagnostics",    icon: Shield },
-  ];
+  const currentView = typeof window !== "undefined"
+    ? new URLSearchParams(window.location.search).get("view") || "map"
+    : "map";
 
   return (
     <div className="flex flex-col h-[100dvh] overflow-hidden">
-      <header className="flex-none h-16 z-50 glass-panel border-x-0 border-t-0 rounded-none bg-background/60 sticky top-0 px-6 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <header className="flex-none h-16 z-50 glass-panel border-x-0 border-t-0 rounded-none sticky top-0 px-4 flex items-center gap-3">
+        <div className="flex items-center gap-2 shrink-0">
           <a
             href={HUB_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-white/40 dark:hover:bg-white/5 transition-all"
+            className="flex items-center gap-1.5 h-8 px-2.5 rounded-xl text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-white/10 transition-all"
             title="Back to Occu-Med Hub"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Hub</span>
+            <span className="hidden xl:inline">Hub</span>
           </a>
-
           <div className="w-px h-5 bg-border/40" />
-
-          <Link href="/" className="flex items-center gap-2.5 group">
+          <Link href="/" className="flex items-center gap-2 group pr-2">
             <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary group-hover:bg-primary group-hover:text-primary-foreground transition-all duration-300">
               <Globe className="w-5 h-5" />
             </div>
-            <div>
-              <span className="font-bold text-sm tracking-tight leading-none block">Global Intelligence</span>
-              <span className="text-[10px] text-muted-foreground font-medium leading-none tracking-wider uppercase">Portal 5</span>
-            </div>
+            <span className="font-bold text-sm tracking-tight whitespace-nowrap">Global Intelligence</span>
           </Link>
         </div>
 
-        <nav className="flex items-center gap-1">
-          {navItems.map((item) => {
-            const isActive = location === item.href;
-            const Icon = item.icon;
+        <nav className="flex-1 min-w-0 flex items-center justify-end gap-0.5 overflow-x-auto no-scrollbar py-1">
+          <Link
+            href="/"
+            className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-all ${
+              location === "/" ? "bg-white/12 text-foreground ring-1 ring-white/15" : "text-muted-foreground hover:text-foreground hover:bg-white/8"
+            }`}
+          >
+            <Search className="w-3.5 h-3.5" /> Search
+          </Link>
+
+          {workspaceTabs.map(({ view, label, icon: Icon }) => {
+            const active = location === "/command-center" && currentView === view;
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-200 ${
-                  isActive
-                    ? "bg-white/60 dark:bg-black/40 text-primary shadow-sm ring-1 ring-black/5 dark:ring-white/10"
-                    : "text-muted-foreground hover:text-foreground hover:bg-white/40 dark:hover:bg-white/5"
+              <a
+                key={view}
+                href={`/command-center?view=${view}`}
+                className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-all ${
+                  active ? "bg-white/14 text-foreground ring-1 ring-white/18" : "text-muted-foreground hover:text-foreground hover:bg-white/8"
                 }`}
               >
-                <Icon className={`w-4 h-4 ${isActive ? "text-primary" : "opacity-70"}`} />
-                <span className="hidden md:inline">{item.label}</span>
-              </Link>
+                <Icon className="w-3.5 h-3.5" />
+                <span>{label}</span>
+              </a>
             );
           })}
+
+          <Link
+            href="/bookmarks"
+            className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-all ${
+              location === "/bookmarks" ? "bg-white/12 text-foreground ring-1 ring-white/15" : "text-muted-foreground hover:text-foreground hover:bg-white/8"
+            }`}
+          >
+            <Bookmark className="w-3.5 h-3.5" /> Bookmarks
+          </Link>
+          <Link
+            href="/history"
+            className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-all ${
+              location === "/history" ? "bg-white/12 text-foreground ring-1 ring-white/15" : "text-muted-foreground hover:text-foreground hover:bg-white/8"
+            }`}
+          >
+            <History className="w-3.5 h-3.5" /> History
+          </Link>
         </nav>
       </header>
 
