@@ -16,23 +16,69 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
+const BOOTSTRAP_RETRY_MS = 30_000;
+let bootstrapInFlight = false;
+let bootstrapComplete = false;
+let bootstrapAttempt = 0;
+let retryTimer: NodeJS.Timeout | null = null;
+
+async function runNetworkBootstrap(reason: "startup" | "retry"): Promise<void> {
+  if (bootstrapComplete || bootstrapInFlight) return;
+
+  if (!process.env.NEON_DATABASE_URL) {
+    logger.error(
+      { reason },
+      "NEON_DATABASE_URL is not configured; provider network data cannot be loaded",
+    );
+    return;
+  }
+
+  bootstrapInFlight = true;
+  bootstrapAttempt += 1;
+
+  try {
+    logger.info(
+      { reason, attempt: bootstrapAttempt },
+      "Starting bundled Command Center -> Neon bootstrap",
+    );
+
+    await bootstrapNetworkData();
+    bootstrapComplete = true;
+
+    if (retryTimer) {
+      clearTimeout(retryTimer);
+      retryTimer = null;
+    }
+
+    logger.info(
+      { attempt: bootstrapAttempt },
+      "Bundled Command Center -> Neon bootstrap complete",
+    );
+  } catch (err: unknown) {
+    logger.error(
+      { err, attempt: bootstrapAttempt },
+      "Bundled Command Center -> Neon bootstrap failed; scheduling automatic retry",
+    );
+
+    if (!retryTimer) {
+      retryTimer = setTimeout(() => {
+        retryTimer = null;
+        void runNetworkBootstrap("retry");
+      }, BOOTSTRAP_RETRY_MS);
+    }
+  } finally {
+    bootstrapInFlight = false;
+  }
+}
+
 const server = app.listen(port, () => {
   logger.info({ port }, "Server listening");
 
-  // The bundled Command Center dataset is a one-time/bootstrap maintenance job.
-  // Render must see an open web-service port immediately; do not block port binding
-  // while hundreds of thousands of provider/pricing/availability rows are loaded.
+  // Render must see an open web-service port immediately. The bundled network
+  // seed runs after port binding and now retries automatically if Neon is
+  // temporarily unavailable or a bootstrap attempt fails.
   setTimeout(() => {
-    logger.info("Starting bundled Command Center -> Neon bootstrap");
-    void bootstrapNetworkData()
-      .then(() => {
-        logger.info("Bundled Command Center -> Neon bootstrap complete");
-      })
-      .catch((err: unknown) => {
-        // Use Pino's conventional `err` key so the actual PostgreSQL error/stack is serialized.
-        // A bootstrap failure must not take the web service down; the next deployment/start can retry.
-        logger.error({ err }, "Bundled Command Center -> Neon bootstrap failed");
-      });
+    void runNetworkBootstrap("startup");
   }, 1000);
 });
 
