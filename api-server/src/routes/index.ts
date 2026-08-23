@@ -5,11 +5,13 @@ import providersRouter from "./providers";
 import bookmarksRouter from "./bookmarks";
 import statsRouter from "./stats";
 import networkRouter from "./network";
+import networkIntelligenceRouter from "./networkIntelligence";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(networkRouter);
+router.use(networkIntelligenceRouter);
 router.use(searchRouter);
 router.use(providersRouter);
 router.use(bookmarksRouter);
