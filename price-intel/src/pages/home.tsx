@@ -1,258 +1,452 @@
-import { useState } from "react";
-import { useToast } from "@/hooks/use-toast";
-import { useSearchPrices, useGetStatsSummary } from "@workspace/api-client-react";
-import type { SearchRequest, SearchResponse } from "@workspace/api-client-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Activity, Building2, Database, Stethoscope,
-  Globe, HeartPulse, Microscope, Zap, Pill,
+  Activity,
+  BadgeCheck,
+  Building2,
+  CheckCircle2,
+  CircleAlert,
+  Database,
+  Globe2,
+  MapPin,
+  Phone,
+  Radar,
+  Search,
+  Sparkles,
+  Upload,
 } from "lucide-react";
-import { SearchBar } from "@/components/search-bar";
-import { MapView } from "@/components/map-view";
-import { ResultsPanel } from "@/components/results-panel";
+import { useToast } from "@/hooks/use-toast";
 
-const QUICK_PROVIDERS = [
-  { query: "Occupational Health", providerType: "occupational_health", country: "MX", city: "Guadalajara", icon: Building2 },
-  { query: "Occupational Health", providerType: "occupational_health", country: "MX", city: "Mexico City", icon: Building2 },
-  { query: "Hospital", providerType: "hospital", country: "GB", city: "London", icon: HeartPulse },
-  { query: "Clinic", providerType: "clinic", country: "CA", city: "Toronto", icon: Stethoscope },
-  { query: "Dental", providerType: "dental", country: "ES", city: "Madrid", icon: Building2 },
-  { query: "Laboratory", providerType: "lab", country: "DE", city: "Berlin", icon: Microscope },
-  { query: "Urgent Care", providerType: "urgent_care", country: "AU", city: "Sydney", icon: Zap },
-  { query: "Imaging Center", providerType: "imaging_center", country: "FR", city: "Paris", icon: Activity },
-  { query: "Pharmacy", providerType: "pharmacy", country: "BR", city: "S\u00e3o Paulo", icon: Pill },
-  { query: "Clinic", providerType: "clinic", country: "TH", city: "Bangkok", icon: Globe },
-  { query: "Hospital", providerType: "hospital", country: "IN", city: "Mumbai", icon: HeartPulse },
-  { query: "Occupational Health", providerType: "occupational_health", country: "CA", city: "Vancouver", icon: Building2 },
-];
+interface NetworkStats {
+  total: number;
+  activeAgreements: number;
+  serviceTagged: number;
+  gpsReady: number;
+  pricingAvailable: number;
+  importedAt: string | null;
+}
 
-function StatCard({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
+interface ExistingProvider {
+  id: string;
+  providerName: string;
+  organizationName?: string;
+  siteName?: string;
+  facilityType?: string;
+  networkStatus: string;
+  country?: string;
+  stateRegion?: string;
+  city?: string;
+  address?: string;
+  postalCode?: string;
+  latitude?: number;
+  longitude?: number;
+  phone?: string;
+  services: string[];
+  lastAppointment?: string;
+  pricingAvailable?: boolean;
+  activity2026?: string;
+  matchedServices: string[];
+  missingServices: string[];
+  coverageRatio: number;
+  source: "existing_network";
+}
+
+interface ExternalProvider {
+  id: string;
+  providerName: string;
+  organizationName?: string;
+  providerType?: string;
+  specialty?: string;
+  city?: string;
+  stateRegion?: string;
+  country?: string;
+  phone?: string;
+  website?: string;
+  sourceUrl?: string;
+  sourceType?: string;
+  evidenceText?: string;
+  networkStatus?: string;
+  confidenceScore?: number;
+}
+
+interface SourcingResponse {
+  requirement: {
+    query: string;
+    country: string;
+    state: string;
+    city: string;
+    services: string[];
+  };
+  summary: {
+    existingMatches: number;
+    qualifiedActiveMatches: number;
+    searchedOutsideNetwork: boolean;
+    externalCandidates: number;
+  };
+  existing: ExistingProvider[];
+  external: ExternalProvider[];
+  externalSources: { keenable: number; tinyfish: number; exa: number };
+  fallbackUsed: boolean;
+}
+
+function glassStyle(alpha = 0.58): React.CSSProperties {
+  return {
+    background: `rgba(18, 10, 32, ${alpha})`,
+    border: "1px solid rgba(194, 145, 255, 0.15)",
+    backdropFilter: "blur(24px)",
+    boxShadow: "0 12px 34px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.04)",
+  };
+}
+
+function StatCard({ icon: Icon, label, value, helper }: { icon: React.ElementType; label: string; value: string; helper?: string }) {
   return (
-    <div
-      className="flex items-center gap-3 p-4 rounded-2xl"
-      style={{
-        background: "rgba(25, 10, 45, 0.65)",
-        backdropFilter: "blur(20px)",
-        border: "1px solid rgba(180, 100, 255, 0.18)",
-        boxShadow: "0 4px 20px rgba(0,0,0,0.40), inset 0 1px 0 rgba(255,255,255,0.06)",
-      }}
-    >
-      <div
-        className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-        style={{ background: "rgba(160,80,255,0.15)" }}
-      >
-        <Icon className="w-4 h-4" style={{ color: "rgba(200,140,255,0.90)" }} />
-      </div>
-      <div>
-        <div className="text-xl font-bold leading-none" style={{ color: "rgba(255,255,255,0.92)" }}>{value}</div>
-        <div className="text-xs mt-0.5" style={{ color: "rgba(200,140,255,0.55)" }}>{label}</div>
+    <div className="rounded-2xl p-4" style={glassStyle(0.5)}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-2xl font-bold text-white/90">{value}</div>
+          <div className="text-xs font-semibold text-violet-200/65 mt-1">{label}</div>
+          {helper && <div className="text-[10px] text-white/30 mt-1">{helper}</div>}
+        </div>
+        <div className="w-9 h-9 rounded-xl bg-violet-400/10 border border-violet-300/10 flex items-center justify-center">
+          <Icon className="w-4 h-4 text-violet-200/80" />
+        </div>
       </div>
     </div>
   );
 }
 
-export function Home() {
-  const [searchQuery, setSearchQuery] = useState<SearchRequest | null>(null);
-  const searchMutation = useSearchPrices();
-  const { data: stats } = useGetStatsSummary({ query: { queryKey: ["/api/stats/summary"] } });
-  const { toast } = useToast();
+function CoverageBar({ ratio }: { ratio: number }) {
+  const pct = Math.round(Math.max(0, Math.min(1, ratio)) * 100);
+  return (
+    <div className="w-full h-1.5 rounded-full bg-white/8 overflow-hidden">
+      <div className="h-full rounded-full bg-violet-400/80" style={{ width: `${pct}%` }} />
+    </div>
+  );
+}
 
-  const handleSearch = (query: SearchRequest) => {
-    if (query.country === "US" || query.country === "USA") {
-      toast({
-        title: "US not supported",
-        description: "This portal is international only. Pick a non-US country.",
-        variant: "destructive",
-      });
-      return;
+function StatusBadge({ value }: { value: string }) {
+  const active = value === "Active Agreement";
+  const fresh = value.includes("NEW") || value.includes("2026 New");
+  const expired = value === "Expired";
+  const cls = active
+    ? "bg-emerald-400/10 border-emerald-300/20 text-emerald-200"
+    : fresh
+      ? "bg-cyan-400/10 border-cyan-300/20 text-cyan-200"
+      : expired
+        ? "bg-rose-400/10 border-rose-300/20 text-rose-200"
+        : "bg-amber-400/10 border-amber-300/20 text-amber-100";
+  return <span className={`inline-flex px-2 py-1 rounded-full border text-[10px] font-semibold ${cls}`}>{value}</span>;
+}
+
+export function Home() {
+  const { toast } = useToast();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [stats, setStats] = useState<NetworkStats>({ total: 0, activeAgreements: 0, serviceTagged: 0, gpsReady: 0, pricingAvailable: 0, importedAt: null });
+  const [query, setQuery] = useState("occupational health");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [country, setCountry] = useState("United States");
+  const [servicesText, setServicesText] = useState("");
+  const [outsideMode, setOutsideMode] = useState<"off" | "gaps" | "always">("gaps");
+  const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [result, setResult] = useState<SourcingResponse | null>(null);
+  const [tab, setTab] = useState<"existing" | "external">("existing");
+
+  const services = useMemo(
+    () => servicesText.split(/[\n,;|]+/).map((item) => item.trim()).filter(Boolean),
+    [servicesText],
+  );
+
+  const refreshStats = async () => {
+    try {
+      const response = await fetch("/api/network/stats");
+      if (!response.ok) return;
+      setStats(await response.json());
+    } catch {
+      // API may be booting; the page remains usable for external sourcing.
     }
-    setSearchQuery(query);
-    searchMutation.mutate(
-      { data: query },
-      {
-        onError: (err: unknown) => {
-          const message = err instanceof Error ? err.message : "Search failed — please try again";
-          toast({ title: "Search error", description: message, variant: "destructive" });
-        },
-      },
-    );
   };
 
-  const hasSearched = searchMutation.isSuccess || searchMutation.isPending || searchMutation.isError;
-  const results = (searchMutation.data as SearchResponse | undefined)?.results ?? [];
+  useEffect(() => {
+    void refreshStats();
+  }, []);
+
+  const importSnapshot = async (file: File) => {
+    setImporting(true);
+    try {
+      const response = await fetch("/api/network/import", {
+        method: "POST",
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Snapshot import failed");
+      toast({ title: "Network snapshot imported", description: `${Number(payload.imported || 0).toLocaleString()} provider locations loaded.` });
+      await refreshStats();
+    } catch (error) {
+      toast({ title: "Import failed", description: error instanceof Error ? error.message : "Could not import the Command Center snapshot.", variant: "destructive" });
+    } finally {
+      setImporting(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  const runSearch = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/sourcing/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query,
+          city,
+          state,
+          country,
+          services,
+          includeExternal: outsideMode !== "off",
+          forceExternal: outsideMode === "always",
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || "Provider sourcing search failed");
+      setResult(payload as SourcingResponse);
+      setTab("existing");
+    } catch (error) {
+      toast({ title: "Search failed", description: error instanceof Error ? error.message : "Provider sourcing search failed.", variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const topExisting = result?.existing.slice(0, 100) ?? [];
+  const external = result?.external ?? [];
 
   return (
-    <div className="h-full w-full flex flex-col">
-      <div
-        className={`transition-all duration-500 ease-in-out flex flex-col items-center justify-center px-6 ${
-          hasSearched ? "py-4 flex-none z-10" : "flex-1 py-12 overflow-y-auto"
-        }`}
-        style={hasSearched ? {
-          background: "rgba(14,4,28,0.80)",
-          backdropFilter: "blur(28px)",
-          borderBottom: "1px solid rgba(160,80,255,0.14)",
-          boxShadow: "0 4px 24px rgba(0,0,0,0.40)",
-        } : undefined}
-      >
-        {!hasSearched && (
-          <div className="text-center mb-10 max-w-3xl mx-auto space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-700">
-            <div
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold mb-2"
-              style={{
-                background: "rgba(160,80,255,0.12)",
-                color: "rgba(200,140,255,0.95)",
-                border: "1px solid rgba(160,80,255,0.25)",
-              }}
-            >
-              <Globe className="w-3.5 h-3.5" />
-              <span>International Provider Finder · Non-US only</span>
+    <div className="h-full overflow-y-auto px-5 py-5 md:px-7 md:py-6">
+      <div className="max-w-[1500px] mx-auto space-y-5 pb-10">
+        <section className="rounded-[28px] p-6 md:p-7" style={glassStyle(0.56)}>
+          <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-5">
+            <div className="max-w-3xl">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-violet-400/10 border border-violet-300/15 text-violet-200/85 text-xs font-semibold">
+                <Radar className="w-3.5 h-3.5" />
+                Provider Sourcing & Network Intelligence
+              </div>
+              <h1 className="text-3xl md:text-5xl font-bold tracking-tight text-white/95 mt-4">Search our network first. Fill the gaps second.</h1>
+              <p className="mt-3 text-sm md:text-base text-white/48 leading-relaxed max-w-2xl">
+                Match a real service requirement against Occu-Med's existing providers, agreement status, documented capabilities and pricing flags. When coverage is weak, search outside the network with Keenable + TinyFish and use Exa only as fallback.
+              </p>
             </div>
 
-            <h1
-              className="font-bold tracking-tight leading-tight"
-              style={{
-                fontSize: "clamp(2.4rem, 6vw, 4.5rem)",
-                background: "linear-gradient(135deg, #fff 0%, rgba(200,140,255,0.90) 50%, rgba(255,160,80,0.80) 100%)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                backgroundClip: "text",
-              }}
-            >
-              Find Healthcare Providers<br />Worldwide
-            </h1>
-
-            <p className="text-lg max-w-2xl mx-auto leading-relaxed" style={{ color: "rgba(255,255,255,0.55)" }}>
-              Choose a country, city, and provider type — we search OpenStreetMap, Wikidata,
-              and optional web metasearch in parallel, then filter noise before you see results.
-              <span className="block mt-1 text-sm" style={{ color: "rgba(255,255,255,0.32)" }}>
-                United States is excluded from this portal.
-              </span>
-            </p>
-          </div>
-        )}
-
-        <div className={`w-full ${hasSearched ? "max-w-6xl" : "max-w-5xl"} transition-all duration-500`}>
-          <SearchBar
-            onSearch={handleSearch}
-            isCompact={hasSearched}
-            isLoading={searchMutation.isPending}
-            currentQuery={searchQuery}
-          />
-        </div>
-
-        {!hasSearched && (
-          <div className="w-full max-w-4xl mx-auto mt-12 space-y-10 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-200 fill-mode-both pb-12">
-            {stats && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard icon={Building2} label="Providers Indexed" value={stats.totalProviders.toLocaleString()} />
-                <StatCard icon={Database} label="Records" value={stats.totalPrices.toLocaleString()} />
-                <StatCard icon={Globe} label="Countries" value={stats.countriesCovered.toLocaleString()} />
-                <StatCard icon={Activity} label="Sources" value={String(stats.totalSources ?? 3)} />
+            <div className="min-w-[280px] rounded-2xl p-4 bg-black/15 border border-white/8">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-xs uppercase tracking-[0.16em] font-semibold text-white/35">Existing Network Snapshot</div>
+                  <div className="text-2xl font-bold text-white/90 mt-1">{stats.total.toLocaleString()}</div>
+                  <div className="text-[11px] text-white/35 mt-1">
+                    {stats.importedAt ? `Last import ${new Date(stats.importedAt).toLocaleString()}` : "Import the Command Center HTML once to populate the network layer."}
+                  </div>
+                </div>
+                <Database className="w-8 h-8 text-violet-200/45" />
               </div>
-            )}
-
-            <div className="space-y-4">
-              <div
-                className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em]"
-                style={{ color: "rgba(200,140,255,0.55)" }}
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".html,.htm,.json,.gz,application/gzip,text/html"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void importSnapshot(file);
+                }}
+              />
+              <button
+                onClick={() => fileRef.current?.click()}
+                disabled={importing}
+                className="mt-4 w-full h-10 rounded-xl bg-violet-500/15 border border-violet-300/20 text-violet-100 text-sm font-semibold hover:bg-violet-500/22 disabled:opacity-50 transition-all flex items-center justify-center gap-2"
               >
-                <Stethoscope className="w-4 h-4" />
-                <span>Quick search — provider type + city</span>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                {QUICK_PROVIDERS.map((svc) => {
-                  const Icon = svc.icon;
-                  return (
-                    <button
-                      key={`${svc.providerType}-${svc.city}`}
-                      onClick={() =>
-                        handleSearch({
-                          query: svc.query,
-                          country: svc.country,
-                          city: svc.city,
-                          providerType: svc.providerType,
-                        } as SearchRequest)
-                      }
-                      className="p-3.5 text-left transition-all group flex items-start gap-2.5 rounded-xl"
-                      style={{
-                        background: "rgba(25,10,45,0.55)",
-                        border: "1px solid rgba(160,80,255,0.14)",
-                        backdropFilter: "blur(16px)",
-                      }}
-                      onMouseEnter={(e) => {
-                        (e.currentTarget as HTMLElement).style.background = "rgba(40,15,70,0.70)";
-                        (e.currentTarget as HTMLElement).style.borderColor = "rgba(180,100,255,0.30)";
-                      }}
-                      onMouseLeave={(e) => {
-                        (e.currentTarget as HTMLElement).style.background = "rgba(25,10,45,0.55)";
-                        (e.currentTarget as HTMLElement).style.borderColor = "rgba(160,80,255,0.14)";
-                      }}
-                    >
-                      <div
-                        className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
-                        style={{ background: "rgba(160,80,255,0.12)" }}
-                      >
-                        <Icon className="w-3.5 h-3.5" style={{ color: "rgba(200,140,255,0.80)" }} />
-                      </div>
-                      <div>
-                        <span className="font-medium text-sm leading-tight block" style={{ color: "rgba(255,255,255,0.78)" }}>
-                          {svc.query}
-                        </span>
-                        <span className="text-xs" style={{ color: "rgba(200,140,255,0.45)" }}>
-                          {svc.city}, {svc.country}
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
+                <Upload className="w-4 h-4" />
+                {importing ? "Importing snapshot…" : stats.total ? "Refresh Command Center Snapshot" : "Import Command Center Snapshot"}
+              </button>
             </div>
+          </div>
+        </section>
 
-            <div
-              className="p-5 rounded-2xl space-y-3"
-              style={{
-                background: "rgba(20,8,38,0.60)",
-                border: "1px solid rgba(160,80,255,0.12)",
-                backdropFilter: "blur(20px)",
-              }}
-            >
-              <div className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: "rgba(200,140,255,0.50)" }}>
-                Multi-mode sources
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {["OpenStreetMap", "Wikidata", "SearXNG (optional)", "Local cache", "Domain filters"].map((s) => (
-                  <span
-                    key={s}
-                    className="px-2.5 py-1 rounded-full text-xs font-medium"
-                    style={{
-                      background: "rgba(160,80,255,0.08)",
-                      border: "1px solid rgba(160,80,255,0.18)",
-                      color: "rgba(255,255,255,0.60)",
-                    }}
-                  >
-                    {s}
-                  </span>
+        <section className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <StatCard icon={Building2} label="Network Locations" value={stats.total.toLocaleString()} />
+          <StatCard icon={BadgeCheck} label="Active Agreements" value={stats.activeAgreements.toLocaleString()} />
+          <StatCard icon={Activity} label="Service Tagged" value={stats.serviceTagged.toLocaleString()} />
+          <StatCard icon={MapPin} label="GPS Ready" value={stats.gpsReady.toLocaleString()} />
+          <StatCard icon={Database} label="Pricing Flagged" value={stats.pricingAvailable.toLocaleString()} />
+        </section>
+
+        <section className="rounded-[26px] p-5 md:p-6" style={glassStyle(0.52)}>
+          <div className="flex items-center gap-2 mb-4">
+            <Search className="w-5 h-5 text-violet-200/80" />
+            <div>
+              <h2 className="text-lg font-bold text-white/90">Provider Requirement</h2>
+              <p className="text-xs text-white/35">Describe the requirement; the existing network is always checked first.</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+            <label className="lg:col-span-4">
+              <span className="text-[11px] font-semibold text-white/40 block mb-1.5">Need / provider type</span>
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Occupational health, audiogram, stress test…" className="w-full h-11 rounded-xl bg-black/20 border border-white/10 px-3 text-sm text-white/85 outline-none focus:border-violet-300/30" />
+            </label>
+            <label className="lg:col-span-2">
+              <span className="text-[11px] font-semibold text-white/40 block mb-1.5">City</span>
+              <input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Helena" className="w-full h-11 rounded-xl bg-black/20 border border-white/10 px-3 text-sm text-white/85 outline-none focus:border-violet-300/30" />
+            </label>
+            <label className="lg:col-span-2">
+              <span className="text-[11px] font-semibold text-white/40 block mb-1.5">State / region</span>
+              <input value={state} onChange={(e) => setState(e.target.value)} placeholder="MT" className="w-full h-11 rounded-xl bg-black/20 border border-white/10 px-3 text-sm text-white/85 outline-none focus:border-violet-300/30" />
+            </label>
+            <label className="lg:col-span-2">
+              <span className="text-[11px] font-semibold text-white/40 block mb-1.5">Country</span>
+              <input value={country} onChange={(e) => setCountry(e.target.value)} placeholder="United States" className="w-full h-11 rounded-xl bg-black/20 border border-white/10 px-3 text-sm text-white/85 outline-none focus:border-violet-300/30" />
+            </label>
+            <div className="lg:col-span-2 flex items-end">
+              <button onClick={() => void runSearch()} disabled={loading} className="w-full h-11 rounded-xl bg-violet-500 text-white font-bold text-sm hover:bg-violet-400 disabled:opacity-50 transition-all flex items-center justify-center gap-2 shadow-lg shadow-violet-950/30">
+                <Search className="w-4 h-4" />
+                {loading ? "Searching…" : "Search"}
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 mt-3">
+            <label className="lg:col-span-2">
+              <span className="text-[11px] font-semibold text-white/40 block mb-1.5">Required services — comma or line separated</span>
+              <textarea value={servicesText} onChange={(e) => setServicesText(e.target.value)} placeholder="Medical / Physical Exam, Audiology / Hearing, PFT / Spirometry, EKG, Laboratory" className="w-full min-h-[86px] rounded-xl bg-black/20 border border-white/10 px-3 py-2.5 text-sm text-white/85 outline-none focus:border-violet-300/30 resize-y" />
+              {services.length > 0 && <div className="flex flex-wrap gap-1.5 mt-2">{services.map((service) => <span key={service} className="px-2 py-1 rounded-full bg-violet-400/10 border border-violet-300/15 text-[10px] text-violet-100/75">{service}</span>)}</div>}
+            </label>
+
+            <div>
+              <span className="text-[11px] font-semibold text-white/40 block mb-1.5">Outside-network search</span>
+              <div className="grid grid-cols-3 gap-1 p-1 rounded-xl bg-black/20 border border-white/10">
+                {([
+                  ["off", "Off"],
+                  ["gaps", "If gaps"],
+                  ["always", "Always"],
+                ] as const).map(([value, label]) => (
+                  <button key={value} type="button" onClick={() => setOutsideMode(value)} className={`h-9 rounded-lg text-xs font-semibold transition-all ${outsideMode === value ? "bg-violet-500/25 text-violet-100 border border-violet-300/20" : "text-white/35 hover:text-white/60"}`}>
+                    {label}
+                  </button>
                 ))}
               </div>
+              <p className="text-[10px] text-white/28 mt-2 leading-relaxed">
+                “If gaps” only spends external search calls when fewer than three active-agreement providers fully match the documented requirement.
+              </p>
             </div>
           </div>
+        </section>
+
+        {result && (
+          <section className="space-y-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <StatCard icon={Database} label="Existing Matches" value={result.summary.existingMatches.toLocaleString()} />
+              <StatCard icon={CheckCircle2} label="Full Active Matches" value={result.summary.qualifiedActiveMatches.toLocaleString()} />
+              <StatCard icon={Sparkles} label="New Candidates" value={result.summary.externalCandidates.toLocaleString()} helper={result.summary.searchedOutsideNetwork ? "External discovery ran" : "Network coverage was sufficient / search disabled"} />
+              <StatCard icon={Radar} label="API Results" value={(result.externalSources.keenable + result.externalSources.tinyfish + result.externalSources.exa).toLocaleString()} helper={`K ${result.externalSources.keenable} · T ${result.externalSources.tinyfish} · E ${result.externalSources.exa}`} />
+            </div>
+
+            <div className="rounded-[26px] overflow-hidden" style={glassStyle(0.5)}>
+              <div className="flex items-center gap-2 p-2 border-b border-white/8">
+                <button onClick={() => setTab("existing")} className={`px-4 h-10 rounded-xl text-sm font-semibold transition-all ${tab === "existing" ? "bg-white/8 text-white" : "text-white/35 hover:text-white/60"}`}>
+                  Existing Network ({result.existing.length})
+                </button>
+                <button onClick={() => setTab("external")} className={`px-4 h-10 rounded-xl text-sm font-semibold transition-all ${tab === "external" ? "bg-white/8 text-white" : "text-white/35 hover:text-white/60"}`}>
+                  Outside Network ({external.length})
+                </button>
+                {result.fallbackUsed && <span className="ml-auto mr-2 text-[10px] px-2 py-1 rounded-full bg-amber-400/10 border border-amber-300/15 text-amber-100/70">Exa fallback used</span>}
+              </div>
+
+              {tab === "existing" ? (
+                <div className="p-3 grid grid-cols-1 xl:grid-cols-2 gap-3">
+                  {topExisting.length === 0 && (
+                    <div className="xl:col-span-2 py-14 text-center text-white/35">
+                      <CircleAlert className="w-7 h-7 mx-auto mb-2 opacity-60" />
+                      No existing network matches were found for this requirement.
+                    </div>
+                  )}
+                  {topExisting.map((provider) => {
+                    const pct = Math.round(provider.coverageRatio * 100);
+                    return (
+                      <article key={provider.id} className="rounded-2xl p-4 bg-black/16 border border-white/8 hover:border-violet-300/15 transition-all">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="text-base font-bold text-white/88 truncate">{provider.providerName}</div>
+                            {provider.organizationName && provider.organizationName !== provider.providerName && <div className="text-xs text-white/35 truncate mt-0.5">{provider.organizationName}</div>}
+                          </div>
+                          <StatusBadge value={provider.networkStatus || "Unknown"} />
+                        </div>
+
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-white/42">
+                          {(provider.city || provider.stateRegion || provider.country) && <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" />{[provider.city, provider.stateRegion, provider.country].filter(Boolean).join(", ")}</span>}
+                          {provider.phone && <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" />{provider.phone}</span>}
+                        </div>
+                        {provider.address && <div className="text-[11px] text-white/28 mt-1">{provider.address} {provider.postalCode || ""}</div>}
+
+                        <div className="mt-4 flex items-center justify-between text-[11px]">
+                          <span className="font-semibold text-white/55">Documented requirement match</span>
+                          <span className={`font-bold ${pct === 100 ? "text-emerald-200" : pct >= 50 ? "text-amber-100" : "text-rose-200"}`}>{pct}%</span>
+                        </div>
+                        <div className="mt-1.5"><CoverageBar ratio={provider.coverageRatio} /></div>
+
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {provider.matchedServices.slice(0, 8).map((service) => <span key={`yes-${service}`} className="px-2 py-1 rounded-full bg-emerald-400/8 border border-emerald-300/12 text-[9px] text-emerald-100/65">✓ {service}</span>)}
+                          {provider.missingServices.slice(0, 8).map((service) => <span key={`no-${service}`} className="px-2 py-1 rounded-full bg-rose-400/8 border border-rose-300/12 text-[9px] text-rose-100/60">Missing {service}</span>)}
+                          {!services.length && provider.services.slice(0, 8).map((service) => <span key={service} className="px-2 py-1 rounded-full bg-violet-400/8 border border-violet-300/12 text-[9px] text-violet-100/60">{service}</span>)}
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap gap-2 text-[10px] text-white/35">
+                          {provider.pricingAvailable && <span className="px-2 py-1 rounded-lg bg-white/5">Pricing data flagged</span>}
+                          {provider.lastAppointment && <span className="px-2 py-1 rounded-lg bg-white/5">Last appointment: {provider.lastAppointment}</span>}
+                          {provider.activity2026 && <span className="px-2 py-1 rounded-lg bg-white/5">{provider.activity2026}</span>}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="p-3 grid grid-cols-1 xl:grid-cols-2 gap-3">
+                  {external.length === 0 && (
+                    <div className="xl:col-span-2 py-14 text-center text-white/35">
+                      <Radar className="w-7 h-7 mx-auto mb-2 opacity-60" />
+                      No outside-network search ran, or no new candidates were returned.
+                    </div>
+                  )}
+                  {external.map((provider) => (
+                    <article key={provider.id} className="rounded-2xl p-4 bg-black/16 border border-cyan-300/10 hover:border-cyan-300/20 transition-all">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-base font-bold text-white/88 truncate">{provider.providerName}</div>
+                          <div className="text-xs text-white/35 mt-0.5">{provider.providerType || provider.specialty || "Provider candidate"}</div>
+                        </div>
+                        <StatusBadge value={provider.networkStatus || "NEW — outside network"} />
+                      </div>
+
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-xs text-white/42">
+                        {(provider.city || provider.stateRegion || provider.country) && <span className="flex items-center gap-1"><Globe2 className="w-3.5 h-3.5" />{[provider.city, provider.stateRegion, provider.country].filter(Boolean).join(", ")}</span>}
+                        {provider.phone && <span className="flex items-center gap-1"><Phone className="w-3.5 h-3.5" />{provider.phone}</span>}
+                      </div>
+
+                      {provider.evidenceText && <p className="mt-3 text-xs leading-relaxed text-white/38 line-clamp-4">{provider.evidenceText}</p>}
+
+                      <div className="mt-4 flex items-center justify-between gap-3">
+                        <div className="text-[10px] text-white/30">Source: {provider.sourceType || "web discovery"}</div>
+                        {(provider.website || provider.sourceUrl) && (
+                          <a href={provider.website || provider.sourceUrl} target="_blank" rel="noopener noreferrer" className="h-8 px-3 rounded-lg border border-cyan-300/15 bg-cyan-400/8 text-cyan-100/75 text-xs font-semibold flex items-center gap-1.5 hover:bg-cyan-400/12">
+                            Open source
+                          </a>
+                        )}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
         )}
       </div>
-
-      {hasSearched && (
-        <div className="flex-1 overflow-hidden flex">
-          <div className="flex-1 overflow-hidden">
-            <ResultsPanel
-              results={results}
-              isLoading={searchMutation.isPending}
-              error={searchMutation.isError ? (searchMutation.error as Error)?.message || "Search failed" : null}
-              query={searchQuery?.query || ""}
-            />
-          </div>
-          <div className="hidden xl:block w-[420px] border-l flex-none" style={{ borderColor: "rgba(160,80,255,0.14)" }}>
-            <MapView results={results} />
-          </div>
-        </div>
-      )}
     </div>
   );
 }
