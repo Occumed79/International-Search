@@ -36,22 +36,17 @@ function statusColor(status?: string | null) {
 function makePopup(point: CommandCenterMapPoint, onSelect?: (point: CommandCenterMapPoint) => void) {
   const root = document.createElement("div");
   root.className = "cc-map-popup";
-
   const title = document.createElement("div");
   title.className = "cc-map-popup-title";
   title.textContent = point.name;
-
   const location = document.createElement("div");
   location.className = "cc-map-popup-location";
   location.textContent = [point.city, point.stateRegion, point.country].filter(Boolean).join(", ") || "Location not listed";
-
   const status = document.createElement("div");
   status.className = "cc-map-popup-status";
   status.textContent = point.networkStatus || "Status not listed";
   status.style.color = statusColor(point.networkStatus);
-
   root.append(title, location, status);
-
   if (onSelect) {
     const button = document.createElement("button");
     button.type = "button";
@@ -60,7 +55,6 @@ function makePopup(point: CommandCenterMapPoint, onSelect?: (point: CommandCente
     button.addEventListener("click", () => onSelect(point));
     root.appendChild(button);
   }
-
   return root;
 }
 
@@ -70,6 +64,7 @@ export function CommandCenterMap({ filterQuery, onSelect }: Props) {
   const [points, setPoints] = useState<CommandCenterMapPoint[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mapReady, setMapReady] = useState(false);
   const [styleMode, setStyleMode] = useState<"street" | "satellite">("street");
   const selectRef = useRef(onSelect);
   selectRef.current = onSelect;
@@ -118,16 +113,17 @@ export function CommandCenterMap({ filterQuery, onSelect }: Props) {
 
         const clickHandler = (event: any) => {
           const feature = event.features?.[0];
-          const id = String(feature?.properties?.id ?? "");
-          const point = pointByIdRef.current.get(id);
+          const point = pointByIdRef.current.get(String(feature?.properties?.id ?? ""));
           if (!point) return;
-          const popup = new maptilersdk.Popup({ offset: 10, maxWidth: "310px" })
+          new maptilersdk.Popup({ offset: 10, maxWidth: "310px" })
             .setLngLat([point.longitude, point.latitude])
             .setDOMContent(makePopup(point, selectRef.current))
             .addTo(map);
         };
 
-        map.on("load", () => {
+        map.once("load", () => {
+          if (disposed) return;
+          setMapReady(true);
           map.on("click", "command-center-providers", clickHandler);
           map.on("mouseenter", "command-center-providers", () => { map.getCanvas().style.cursor = "pointer"; });
           map.on("mouseleave", "command-center-providers", () => { map.getCanvas().style.cursor = ""; });
@@ -141,12 +137,21 @@ export function CommandCenterMap({ filterQuery, onSelect }: Props) {
       disposed = true;
       mapRef.current?.remove();
       mapRef.current = null;
+      setMapReady(false);
     };
   }, []);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !mapReady) return;
+    const target = styleMode === "satellite" ? maptilersdk.MapStyle.SATELLITE : maptilersdk.MapStyle.STREETS;
+    map.setStyle(target);
+  }, [styleMode, mapReady]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+
     const apply = () => {
       const data = {
         type: "FeatureCollection" as const,
@@ -156,9 +161,8 @@ export function CommandCenterMap({ filterQuery, onSelect }: Props) {
           properties: { id: String(point.id), status: point.networkStatus || "Unknown" },
         })),
       };
-
-      const existingSource = map.getSource("command-center-providers") as any;
-      if (existingSource) existingSource.setData(data);
+      const source = map.getSource("command-center-providers") as any;
+      if (source) source.setData(data);
       else {
         map.addSource("command-center-providers", { type: "geojson", data, cluster: false } as any);
         map.addLayer({
@@ -167,42 +171,24 @@ export function CommandCenterMap({ filterQuery, onSelect }: Props) {
           source: "command-center-providers",
           paint: {
             "circle-radius": ["interpolate", ["linear"], ["zoom"], 2, 2.3, 6, 3.2, 10, 5.2],
-            "circle-color": [
-              "match", ["get", "status"],
-              "Active Agreement", "#397ec1",
-              "Expired", "#b6545f",
-              "2026 New / Unreconciled", "#4c8d7b",
-              "#b98335",
-            ],
+            "circle-color": ["match", ["get", "status"], "Active Agreement", "#397ec1", "Expired", "#b6545f", "2026 New / Unreconciled", "#4c8d7b", "#b98335"],
             "circle-stroke-width": 0.7,
             "circle-stroke-color": "rgba(255,255,255,.88)",
             "circle-opacity": 0.9,
           },
         } as any);
       }
-
-      if (points.length === 1) {
-        map.easeTo({ center: [points[0].longitude, points[0].latitude], zoom: 11, duration: 600 });
-      } else if (points.length > 1) {
+      if (points.length === 1) map.easeTo({ center: [points[0].longitude, points[0].latitude], zoom: 11, duration: 600 });
+      else if (points.length > 1) {
         const bounds = new maptilersdk.LngLatBounds();
         for (const point of points) bounds.extend([point.longitude, point.latitude]);
         map.fitBounds(bounds, { padding: 42, maxZoom: 11, duration: 650 });
       }
     };
 
-    if (map.loaded()) apply();
-    else map.once("load", apply);
-  }, [points, styleMode]);
-
-  const switchStyle = (mode: "street" | "satellite") => {
-    const map = mapRef.current;
-    setStyleMode(mode);
-    if (!map) return;
-    map.setStyle(mode === "satellite" ? maptilersdk.MapStyle.SATELLITE : maptilersdk.MapStyle.STREETS);
-    map.once("style.load", () => {
-      // The data effect re-runs through styleMode and reattaches the provider source/layer.
-    });
-  };
+    if ((map as any).isStyleLoaded?.()) apply();
+    else map.once("style.load", apply);
+  }, [points, mapReady, styleMode]);
 
   return (
     <div className="cc-map-layout">
@@ -219,8 +205,8 @@ export function CommandCenterMap({ filterQuery, onSelect }: Props) {
       <div className="cc-map-pane">
         <div ref={containerRef} className="cc-map-canvas" />
         <div className="cc-map-tools">
-          <button type="button" className={styleMode === "street" ? "on" : ""} onClick={() => switchStyle("street")}><Layers />Street</button>
-          <button type="button" className={styleMode === "satellite" ? "on" : ""} onClick={() => switchStyle("satellite")}><Satellite />Satellite</button>
+          <button type="button" className={styleMode === "street" ? "on" : ""} onClick={() => setStyleMode("street")}><Layers />Street</button>
+          <button type="button" className={styleMode === "satellite" ? "on" : ""} onClick={() => setStyleMode("satellite")}><Satellite />Satellite</button>
         </div>
         <div className="cc-map-count">{points.length.toLocaleString()} individual clinic dots</div>
         <div className="cc-map-legend">
@@ -237,12 +223,7 @@ export function CommandCenterMap({ filterQuery, onSelect }: Props) {
         <h3>Individual Clinic Locations</h3>
         <p>Every dot is one physical clinic site. No clustering or entity collapsing. Select a dot or a location below to inspect that exact clinic.</p>
         <div className="cc-map-list">
-          {points.slice(0, 120).map((point) => (
-            <button key={point.id} type="button" onClick={() => onSelect?.(point)}>
-              <b>{point.name}</b>
-              <span>{[point.city, point.stateRegion, point.country].filter(Boolean).join(", ")} · {point.networkStatus || "Status not listed"}</span>
-            </button>
-          ))}
+          {points.slice(0, 120).map((point) => <button key={point.id} type="button" onClick={() => onSelect?.(point)}><b>{point.name}</b><span>{[point.city, point.stateRegion, point.country].filter(Boolean).join(", ")} · {point.networkStatus || "Status not listed"}</span></button>)}
         </div>
       </aside>
     </div>
