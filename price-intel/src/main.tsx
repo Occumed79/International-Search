@@ -3,5 +3,6 @@ import App from "./App";
 import "./index.css";
 import "./palette.css";
 import "./palette-effects.css";
+import "./ux-fixes.css";
 
 createRoot(document.getElementById("root")!).render(<App />);
