@@ -29,6 +29,7 @@ const workspaceTabs = [
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
+  const locationPath = location.split("?")[0];
   const currentView = typeof window !== "undefined"
     ? new URLSearchParams(window.location.search).get("view") || "map"
     : "map";
@@ -60,14 +61,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <Link
             href="/"
             className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-all ${
-              location === "/" ? "bg-white/12 text-foreground ring-1 ring-white/15" : "text-muted-foreground hover:text-foreground hover:bg-white/8"
+              locationPath === "/" ? "bg-white/12 text-foreground ring-1 ring-white/15" : "text-muted-foreground hover:text-foreground hover:bg-white/8"
             }`}
           >
             <Search className="w-3.5 h-3.5" /> Search
           </Link>
 
           {workspaceTabs.map(({ view, label, icon: Icon }) => {
-            const active = location === "/command-center" && currentView === view;
+            const active = locationPath === "/command-center" && currentView === view;
             return (
               <a
                 key={view}
@@ -85,7 +86,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <Link
             href="/bookmarks"
             className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-all ${
-              location === "/bookmarks" ? "bg-white/12 text-foreground ring-1 ring-white/15" : "text-muted-foreground hover:text-foreground hover:bg-white/8"
+              locationPath === "/bookmarks" ? "bg-white/12 text-foreground ring-1 ring-white/15" : "text-muted-foreground hover:text-foreground hover:bg-white/8"
             }`}
           >
             <Bookmark className="w-3.5 h-3.5" /> Bookmarks
@@ -93,7 +94,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <Link
             href="/history"
             className={`flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-all ${
-              location === "/history" ? "bg-white/12 text-foreground ring-1 ring-white/15" : "text-muted-foreground hover:text-foreground hover:bg-white/8"
+              locationPath === "/history" ? "bg-white/12 text-foreground ring-1 ring-white/15" : "text-muted-foreground hover:text-foreground hover:bg-white/8"
             }`}
           >
             <History className="w-3.5 h-3.5" /> History
