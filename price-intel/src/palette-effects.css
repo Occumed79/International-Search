@@ -1,0 +1,40 @@
+/* Final palette pass: eliminate legacy semantic and motion colors outside the approved five-color system. */
+
+[class*="text-emerald"], [class*="text-green"] { color: #B6C7D6 !important; }
+[class*="bg-emerald"], [class*="bg-green"] { background-color: rgba(75,111,147,.28) !important; }
+[class*="border-emerald"], [class*="border-green"] { border-color: rgba(182,199,214,.38) !important; }
+
+[class*="text-cyan"], [class*="text-sky"], [class*="text-blue"] { color: #B6C7D6 !important; }
+[class*="bg-cyan"], [class*="bg-sky"], [class*="bg-blue"] { background-color: rgba(182,199,214,.20) !important; }
+[class*="border-cyan"], [class*="border-sky"], [class*="border-blue"] { border-color: rgba(75,111,147,.34) !important; }
+
+[class*="text-amber"], [class*="text-yellow"] { color: #EEF2F6 !important; }
+[class*="bg-amber"], [class*="bg-yellow"] { background-color: rgba(182,199,214,.18) !important; }
+[class*="border-amber"], [class*="border-yellow"] { border-color: rgba(182,199,214,.34) !important; }
+
+[class*="text-rose"], [class*="text-red"] { color: #B6C7D6 !important; }
+[class*="bg-rose"], [class*="bg-red"] { background-color: rgba(30,42,58,.52) !important; }
+[class*="border-rose"], [class*="border-red"] { border-color: rgba(75,111,147,.46) !important; }
+
+.scan-animate::after {
+  background: linear-gradient(90deg, transparent, rgba(182,199,214,.78), transparent) !important;
+}
+
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(75,111,147,.38); }
+  50% { box-shadow: 0 0 24px rgba(182,199,214,.62), 0 0 48px rgba(75,111,147,.30); }
+}
+
+/* Selection/focus color across inputs and controls. */
+::selection {
+  background: #4B6F93;
+  color: #FFFEFE;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+button:focus-visible,
+a:focus-visible {
+  outline-color: #B6C7D6 !important;
+}
