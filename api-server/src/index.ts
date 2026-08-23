@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { bootstrapNetworkData } from "./services/networkBootstrap";
+import { bootstrapNetworkData } from "./services/networkBootstrapV2";
 
 const rawPort = process.env["PORT"];
 
@@ -74,9 +74,6 @@ async function runNetworkBootstrap(reason: "startup" | "retry"): Promise<void> {
 const server = app.listen(port, () => {
   logger.info({ port }, "Server listening");
 
-  // Render must see an open web-service port immediately. The bundled network
-  // seed runs after port binding and now retries automatically if Neon is
-  // temporarily unavailable or a bootstrap attempt fails.
   setTimeout(() => {
     void runNetworkBootstrap("startup");
   }, 1000);
