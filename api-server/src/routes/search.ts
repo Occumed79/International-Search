@@ -13,6 +13,7 @@ import {
   normalizeCountry,
   type ProviderHit,
 } from "../services/multiModeSearch";
+import { runApiProviderSearch } from "../services/apiProviderSearch";
 
 const router: IRouter = Router();
 
@@ -73,6 +74,37 @@ function toApiResult(hit: ProviderHit, idx: number) {
   };
 }
 
+function mergeProviderHits(primary: ProviderHit[], supplemental: ProviderHit[]): ProviderHit[] {
+  const merged = new Map<string, ProviderHit>();
+  for (const hit of [...primary, ...supplemental]) {
+    const locationKey = `${(hit.city || "").toLowerCase()}|${(hit.country || "").toLowerCase()}`;
+    const url = (hit.website || hit.sourceUrl || "").replace(/\/$/, "").toLowerCase();
+    const name = String(hit.providerName || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const key = url ? `url:${url}` : `name:${name}|${locationKey}`;
+    if (!key || key === "name:|") continue;
+
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, hit);
+      continue;
+    }
+
+    // Keep the primary API hit, but backfill structured map/contact fields
+    // from OSM/Wikidata when available.
+    merged.set(key, {
+      ...existing,
+      latitude: existing.latitude ?? hit.latitude,
+      longitude: existing.longitude ?? hit.longitude,
+      phone: existing.phone ?? hit.phone,
+      postalCode: existing.postalCode ?? hit.postalCode,
+      stateRegion: existing.stateRegion ?? hit.stateRegion,
+      city: existing.city ?? hit.city,
+      website: existing.website ?? hit.website,
+    });
+  }
+  return Array.from(merged.values());
+}
+
 router.post("/search", async (req, res): Promise<void> => {
   try {
     const parsed = SearchPricesBody.safeParse(req.body);
@@ -130,14 +162,22 @@ router.post("/search", async (req, res): Promise<void> => {
     const pageNum = clampInt(page, 1, 100, 1);
     const pageSz = clampInt(pageSize, 1, MAX_PAGE_SIZE, 25);
 
-    const multi = await runMultiModeSearch({
+    const discoveryParams = {
       query: query || resolvedType || "clinic",
       country,
       city,
       state,
       providerType: resolvedType,
       radiusMiles: typeof radiusMiles === "number" ? radiusMiles : 25,
-    });
+    };
+
+    // Keenable + TinyFish are the primary discovery layer. Existing OSM/
+    // Wikidata/SearXNG remain supplemental for map coordinates and coverage.
+    // Exa is invoked only inside runApiProviderSearch when primary coverage is low.
+    const [apiSearch, multi] = await Promise.all([
+      runApiProviderSearch(discoveryParams),
+      runMultiModeSearch(discoveryParams),
+    ]);
 
     if (multi.blockedUs) {
       res.status(400).json({
@@ -147,7 +187,9 @@ router.post("/search", async (req, res): Promise<void> => {
       return;
     }
 
-    if (multi.error && multi.results.length === 0) {
+    const liveDiscovery = mergeProviderHits(apiSearch.results, multi.results);
+
+    if (multi.error && liveDiscovery.length === 0) {
       res.status(400).json({ error: multi.error });
       return;
     }
@@ -222,7 +264,7 @@ router.post("/search", async (req, res): Promise<void> => {
             .insert(searchHistoryTable)
             .values({
               query: histQuery,
-              resultCount: multi.results.length + dbFormatted.length,
+              resultCount: liveDiscovery.length + dbFormatted.length,
             })
             .returning();
           searchId = searchRecord?.id ?? null;
@@ -234,7 +276,7 @@ router.post("/search", async (req, res): Promise<void> => {
       }
     }
 
-    const live = multi.results.map((h, i) => toApiResult(h, i));
+    const live = liveDiscovery.map((h, i) => toApiResult(h, i));
     const seen = new Set(
       live.map(
         (r) =>
@@ -274,6 +316,10 @@ router.post("/search", async (req, res): Promise<void> => {
       queryNormalized: (query || resolvedType || "").toLowerCase().trim(),
       searchId,
       sources: {
+        keenable: apiSearch.sources.keenable,
+        tinyfish: apiSearch.sources.tinyfish,
+        exaFallback: apiSearch.sources.exa,
+        exaFallbackUsed: apiSearch.fallbackUsed,
         openstreetmap: multi.sources.osm,
         wikidata: multi.sources.wikidata,
         searxng: multi.sources.searxng,
