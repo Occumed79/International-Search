@@ -373,7 +373,7 @@ async function stagePricing(client: DbClient, aux: AuxSnapshot): Promise<number>
       const componentIndex = Number(record[1]);
       return {
         ...clinicFields(aux, clinicIndex),
-        component_name: clean(aux.components[componentIndex], 500),
+        component_name: clean(aux.components[componentIndex], 500) || "Unspecified pricing line item",
         numeric_price: toNumber(record[2]),
         source_price_text: clean(record[3], 4_000),
         effective_date: clean(record[4], 80),
