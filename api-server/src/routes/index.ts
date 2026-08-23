@@ -4,10 +4,12 @@ import searchRouter from "./search";
 import providersRouter from "./providers";
 import bookmarksRouter from "./bookmarks";
 import statsRouter from "./stats";
+import networkRouter from "./network";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(networkRouter);
 router.use(searchRouter);
 router.use(providersRouter);
 router.use(bookmarksRouter);
