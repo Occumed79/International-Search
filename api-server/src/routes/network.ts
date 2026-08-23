@@ -243,6 +243,48 @@ function coverageScore(available: string[], required: string[]): { matched: stri
   return { matched, missing, ratio: matched.length / required.length };
 }
 
+async function getExplicitIntelligence(externalIds: number[]): Promise<{
+  availability: Map<number, string[]>;
+  pricingCounts: Map<number, number>;
+}> {
+  const availability = new Map<number, string[]>();
+  const pricingCounts = new Map<number, number>();
+  if (!pool || externalIds.length === 0) return { availability, pricingCounts };
+
+  try {
+    const [availabilityResult, pricingResult] = await Promise.all([
+      pool.query(
+        `SELECT canonical_external_id,
+                array_agg(DISTINCT component_name ORDER BY component_name) AS components
+         FROM network_availability_snapshot
+         WHERE canonical_external_id = ANY($1::int[])
+         GROUP BY canonical_external_id`,
+        [externalIds],
+      ),
+      pool.query(
+        `SELECT canonical_external_id, COUNT(*)::int AS pricing_count
+         FROM network_pricing_snapshot
+         WHERE canonical_external_id = ANY($1::int[])
+         GROUP BY canonical_external_id`,
+        [externalIds],
+      ),
+    ]);
+
+    for (const row of availabilityResult.rows) {
+      availability.set(Number(row.canonical_external_id), Array.isArray(row.components) ? row.components.map(String) : []);
+    }
+    for (const row of pricingResult.rows) {
+      pricingCounts.set(Number(row.canonical_external_id), Number(row.pricing_count) || 0);
+    }
+  } catch (error: any) {
+    // The core network snapshot can be imported before the auxiliary intelligence
+    // snapshot. Missing aux tables should not make existing-network search fail.
+    if (error?.code !== "42P01") logger.warn({ error }, "Explicit network intelligence enrichment failed");
+  }
+
+  return { availability, pricingCounts };
+}
+
 async function searchExistingNetwork(params: {
   query?: string;
   country?: string;
@@ -298,13 +340,25 @@ async function searchExistingNetwork(params: {
     values,
   );
 
+  const externalIds = [...new Set(
+    result.rows
+      .map((row) => Number(row.external_id))
+      .filter((id) => Number.isFinite(id)),
+  )];
+  const explicit = await getExplicitIntelligence(externalIds);
   const requiredServices = params.services || [];
+
   return result.rows.map((row) => {
-    const services = Array.isArray(row.services) ? row.services.map(String) : [];
+    const externalId = Number.isFinite(Number(row.external_id)) ? Number(row.external_id) : null;
+    const taggedServices = Array.isArray(row.services) ? row.services.map(String) : [];
+    const explicitAvailability = externalId == null ? [] : (explicit.availability.get(externalId) || []);
+    const services = [...new Set([...taggedServices, ...explicitAvailability])];
     const coverage = coverageScore(services, requiredServices);
+    const pricingLineCount = externalId == null ? 0 : (explicit.pricingCounts.get(externalId) || 0);
+
     return {
       id: `network-${row.id}`,
-      externalId: row.external_id,
+      externalId,
       providerName: row.name,
       organizationName: row.organization_name,
       siteName: row.site_name,
@@ -320,8 +374,12 @@ async function searchExistingNetwork(params: {
       longitude: row.longitude,
       phone: row.phone,
       services,
+      taggedServices,
+      explicitAvailability,
+      explicitAvailabilityCount: explicitAvailability.length,
       lastAppointment: row.last_appointment,
-      pricingAvailable: row.pricing_available,
+      pricingAvailable: Boolean(row.pricing_available || pricingLineCount > 0),
+      pricingLineCount,
       activity2026: row.activity_2026,
       sourceStatus: row.source_status,
       matchedServices: coverage.matched,
@@ -329,7 +387,12 @@ async function searchExistingNetwork(params: {
       coverageRatio: coverage.ratio,
       source: "existing_network",
     };
-  }).sort((a, b) => b.coverageRatio - a.coverageRatio);
+  }).sort((a, b) => {
+    if (b.coverageRatio !== a.coverageRatio) return b.coverageRatio - a.coverageRatio;
+    if (a.networkStatus === "Active Agreement" && b.networkStatus !== "Active Agreement") return -1;
+    if (b.networkStatus === "Active Agreement" && a.networkStatus !== "Active Agreement") return 1;
+    return String(a.providerName).localeCompare(String(b.providerName));
+  });
 }
 
 router.post(
