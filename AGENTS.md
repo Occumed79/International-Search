@@ -20,6 +20,12 @@ These rules are explicit user requirements for all future work on this repositor
 - Serper is removed and should not be reintroduced without explicit approval.
 - This app supports both U.S. and international provider sourcing; it is not the Insight Hub 2 company-location tool.
 
+## Frontend preservation
+
+- **Preserve the established frontend, visual identity, navigation shell, and interaction patterns unless the user explicitly requests a redesign.** Functional repurposing, new APIs, database changes, or new sourcing logic do not authorize a visual redesign.
+- Keep the existing Global Intelligence / Portal 5 shell and established page styling as the baseline. Add new capabilities inside that interface rather than replacing it with a new dashboard or command-center design.
+- Do not rename the visible application, portal identity, primary navigation, or browser title as a side effect of backend or product-function changes unless the user explicitly requests those visible changes.
+
 ## Change discipline
 
 - Preserve existing integrated capabilities when repurposing or extending the app instead of replacing them with a simplified substitute.
