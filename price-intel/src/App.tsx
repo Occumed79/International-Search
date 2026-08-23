@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import { Layout } from "@/components/layout";
 import { Home } from "@/pages/home";
+import { CommandCenter } from "@/pages/command-center";
 import { Bookmarks } from "@/pages/bookmarks";
 import { History } from "@/pages/history";
 import { Admin } from "@/pages/admin";
@@ -14,7 +15,8 @@ const queryClient = new QueryClient();
 
 function DarkModeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
-    // Apply dark class to <html> so all dark: variants and portals/dropdowns work correctly
+    // Keep the existing Portal 5 shell/theme. Individual workspaces can provide
+    // their own contained visual treatment without replacing the app shell.
     document.documentElement.classList.add("dark");
     return () => {
       document.documentElement.classList.remove("dark");
@@ -28,6 +30,8 @@ function Router() {
     <Layout>
       <Switch>
         <Route path="/" component={Home} />
+        {/* The HTML-inspired Command Center is additive: it does not replace Home. */}
+        <Route path="/command-center" component={CommandCenter} />
         {/* Alias /search → Home so direct links and hub nav work */}
         <Route path="/search">
           <Redirect to="/" />
