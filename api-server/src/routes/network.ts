@@ -264,7 +264,7 @@ async function searchExistingNetwork(params: {
   if (query) {
     values.push(`%${query}%`);
     const p = `$${values.length}`;
-    where.push(`(name ILIKE ${p} OR organization_name ILIKE ${p} OR site_name ILIKE ${p} OR facility_type ILIKE ${p} OR city ILIKE ${p} OR state_region ILIKE ${p} OR address1 ILIKE ${p})`);
+    where.push(`(name ILIKE ${p} OR organization_name ILIKE ${p} OR site_name ILIKE ${p} OR facility_type ILIKE ${p} OR city ILIKE ${p} OR state_region ILIKE ${p} OR address1 ILIKE ${p} OR services::text ILIKE ${p})`);
   }
   if (country) {
     values.push(country);
@@ -413,10 +413,11 @@ router.post("/sourcing/search", async (req, res): Promise<void> => {
     const city = clean(body.city, 120);
     const services = splitServices(body.services);
     const includeExternal = body.includeExternal !== false;
+    const forceExternal = body.forceExternal === true;
 
     const existing = await searchExistingNetwork({ query, country, state, city, services, limit: 200 });
     const qualifiedExisting = existing.filter((row) => row.coverageRatio >= 1 && row.networkStatus === "Active Agreement");
-    const shouldSearchOutside = includeExternal && qualifiedExisting.length < 3;
+    const shouldSearchOutside = includeExternal && (forceExternal || qualifiedExisting.length < 3);
 
     let external: Array<Record<string, unknown>> = [];
     let externalSources = { keenable: 0, tinyfish: 0, exa: 0 };
