@@ -14,8 +14,6 @@ services:
         value: /
       - key: NEON_DATABASE_URL
         sync: false
-      - key: DATABASE_URL
-        sync: false
       - key: KEENABLE_API_KEY
         sync: false
       - key: TINYFISH_API_KEY
