@@ -10,20 +10,32 @@ interface MapViewProps {
   onSelectProvider?: (providerId: number) => void;
 }
 
+const PRICE_COLORS = {
+  cash: "#4B6F93",
+  discounted: "#B6C7D6",
+  bundled: "#1E2A3A",
+  fee: "#EEF2F6",
+  default: "#4B6F93",
+} as const;
+
 function getPriceColor(priceType: string): string {
   switch (priceType) {
     case "self_pay":
     case "cash_pay":
-      return "#10b981";
+      return PRICE_COLORS.cash;
     case "discounted_cash":
-      return "#3b82f6";
+      return PRICE_COLORS.discounted;
     case "bundled":
-      return "#8b5cf6";
+      return PRICE_COLORS.bundled;
     case "fee_schedule":
-      return "#f59e0b";
+      return PRICE_COLORS.fee;
     default:
-      return "#6366f1";
+      return PRICE_COLORS.default;
   }
+}
+
+function markerTextColor(color: string): string {
+  return color === PRICE_COLORS.discounted || color === PRICE_COLORS.fee ? "#1E2A3A" : "#FFFEFE";
 }
 
 function hasCoordinates(result: PriceResult): boolean {
@@ -61,7 +73,7 @@ function makePopupContent(group: PriceResult[], color: string, onSelectProvider?
 
     const price = document.createElement("div");
     price.className = "occu-map-popup-price";
-    price.style.color = color;
+    price.style.color = color === PRICE_COLORS.fee ? "#4B6F93" : color;
     price.textContent = formatPrice(result);
 
     const service = document.createElement("div");
@@ -151,7 +163,6 @@ export function MapView({ results, onSelectProvider }: MapViewProps) {
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !isLoaded) return;
-
     map.setStyle(mapLayer === "satellite" ? maptilersdk.MapStyle.SATELLITE : maptilersdk.MapStyle.STREETS);
   }, [mapLayer, isLoaded]);
 
@@ -196,6 +207,7 @@ export function MapView({ results, onSelectProvider }: MapViewProps) {
       markerElement.style.width = `${size}px`;
       markerElement.style.height = `${size}px`;
       markerElement.style.background = color;
+      markerElement.style.color = markerTextColor(color);
       markerElement.setAttribute("aria-label", count > 1 ? `${count} providers at this location` : primary.providerName);
       if (count > 1) markerElement.textContent = String(count);
 
@@ -224,33 +236,32 @@ export function MapView({ results, onSelectProvider }: MapViewProps) {
   const geoResultCount = results.filter(hasCoordinates).length;
 
   return (
-    <div className="relative w-full h-full overflow-hidden bg-[#0b1220]">
+    <div className="relative w-full h-full overflow-hidden bg-[#1E2A3A]">
       <style>{`
         .occu-map-marker {
           border-radius: 999px;
-          border: 2.5px solid rgba(255,255,255,.98);
-          box-shadow: 0 4px 14px rgba(2,8,23,.38), 0 0 0 1px rgba(15,23,42,.12);
+          border: 2.5px solid #FFFEFE;
+          box-shadow: 0 4px 14px rgba(30,42,58,.35), 0 0 0 1px rgba(30,42,58,.14);
           display: flex;
           align-items: center;
           justify-content: center;
-          color: white;
           font-size: 10px;
           font-weight: 800;
           cursor: pointer;
           transition: transform .16s ease, box-shadow .16s ease;
         }
-        .occu-map-marker:hover { transform: scale(1.08); box-shadow: 0 7px 20px rgba(2,8,23,.48), 0 0 0 3px rgba(255,255,255,.16); }
-        .maplibregl-popup-content { border-radius: 16px !important; padding: 10px !important; box-shadow: 0 18px 50px rgba(15,23,42,.24) !important; }
-        .maplibregl-popup-close-button { width: 28px; height: 28px; font-size: 18px; color: #64748b; }
-        .occu-map-popup { min-width: 210px; color: #182433; font-family: Inter, system-ui, sans-serif; }
-        .occu-map-popup-item { margin-bottom: 8px; padding: 2px 2px 8px; border-bottom: 1px solid #e5e7eb; }
+        .occu-map-marker:hover { transform: scale(1.08); box-shadow: 0 7px 20px rgba(30,42,58,.46), 0 0 0 3px rgba(182,199,214,.30); }
+        .maplibregl-popup-content { border-radius: 16px !important; padding: 10px !important; box-shadow: 0 18px 50px rgba(30,42,58,.24) !important; background:#FFFEFE!important; color:#1E2A3A!important; }
+        .maplibregl-popup-close-button { width: 28px; height: 28px; font-size: 18px; color: #4B6F93; }
+        .occu-map-popup { min-width: 210px; color: #1E2A3A; font-family: Inter, system-ui, sans-serif; }
+        .occu-map-popup-item { margin-bottom: 8px; padding: 2px 2px 8px; border-bottom: 1px solid #B6C7D6; }
         .occu-map-popup-item:last-of-type { margin-bottom: 0; }
         .occu-map-popup-title { font-size: 13px; font-weight: 800; line-height: 1.25; padding-right: 18px; }
-        .occu-map-popup-location { margin-top: 2px; font-size: 11px; color: #64748b; }
+        .occu-map-popup-location { margin-top: 2px; font-size: 11px; color: #4B6F93; }
         .occu-map-popup-price { margin-top: 4px; font-size: 15px; font-weight: 850; }
-        .occu-map-popup-service { margin-top: 1px; font-size: 10px; color: #94a3b8; }
-        .occu-map-popup-more { padding: 4px 0 2px; text-align: center; font-size: 10px; color: #64748b; }
-        .occu-map-popup-button { margin-top: 8px; width: 100%; min-height: 34px; border: 0; border-radius: 9px; background: #397ec1; color: white; cursor: pointer; font-size: 11px; font-weight: 750; }
+        .occu-map-popup-service { margin-top: 1px; font-size: 10px; color: #4B6F93; }
+        .occu-map-popup-more { padding: 4px 0 2px; text-align: center; font-size: 10px; color: #4B6F93; }
+        .occu-map-popup-button { margin-top: 8px; width: 100%; min-height: 34px; border: 0; border-radius: 9px; background: #4B6F93; color: #FFFEFE; cursor: pointer; font-size: 11px; font-weight: 750; }
         .maplibregl-ctrl-attrib { font-size: 9px !important; opacity: .8; }
       `}</style>
 
@@ -279,10 +290,10 @@ export function MapView({ results, onSelectProvider }: MapViewProps) {
       <div className="absolute bottom-3 left-3 z-10 glass-panel rounded-xl p-3 border border-border/40 shadow-lg text-xs space-y-1.5">
         <div className="font-semibold text-xs text-muted-foreground uppercase tracking-wider mb-2">Price Type</div>
         {[
-          { label: "Self-Pay / Cash", color: "#10b981" },
-          { label: "Discounted Cash", color: "#3b82f6" },
-          { label: "Bundled Package", color: "#8b5cf6" },
-          { label: "Fee Schedule", color: "#f59e0b" },
+          { label: "Self-Pay / Cash", color: PRICE_COLORS.cash },
+          { label: "Discounted Cash", color: PRICE_COLORS.discounted },
+          { label: "Bundled Package", color: PRICE_COLORS.bundled },
+          { label: "Fee Schedule", color: PRICE_COLORS.fee },
         ].map(({ label, color }) => (
           <div key={label} className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full border border-white/50 shadow-sm" style={{ background: color }} />
