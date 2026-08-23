@@ -27,7 +27,6 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
 
-// Resolve frontend dist relative to the repo root (process.cwd())
 const possiblePaths = [
   path.resolve(process.cwd(), "price-intel/dist/public"),
   path.resolve(process.cwd(), "../price-intel/dist/public"),
@@ -38,14 +37,13 @@ const staticDir = possiblePaths.find((p) => fs.existsSync(p));
 if (staticDir) {
   logger.info({ staticDir }, "Serving frontend static files");
   app.use(express.static(staticDir));
-  // Express 5 requires named wildcard params — use regex instead
   app.get(/.*/, (_req, res) => {
     res.sendFile(path.join(staticDir, "index.html"));
   });
 } else {
   logger.warn({ tried: possiblePaths }, "Frontend dist not found — API-only mode");
   app.get("/", (_req, res) => {
-    res.json({ status: "ok", message: "International Search API is running. Frontend not built." });
+    res.json({ status: "ok", message: "Occu-Med Provider Sourcing & Network Intelligence API is running." });
   });
 }
 
@@ -59,7 +57,7 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   }
   res.status(500).json({
     error: "Internal server error",
-    message: err?.message || "Something went wrong while processing the search.",
+    message: err?.message || "Something went wrong while processing the provider sourcing request.",
   });
 });
 
