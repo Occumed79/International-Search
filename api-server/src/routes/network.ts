@@ -243,6 +243,26 @@ function coverageScore(available: string[], required: string[]): { matched: stri
   return { matched, missing, ratio: matched.length / required.length };
 }
 
+async function getExplicitCandidateIds(requiredServices: string[]): Promise<number[]> {
+  if (!pool || requiredServices.length === 0) return [];
+  const patterns = requiredServices.map((service) => `%${service}%`);
+  try {
+    const result = await pool.query(
+      `SELECT DISTINCT canonical_external_id
+       FROM network_availability_snapshot
+       WHERE component_name ILIKE ANY($1::text[])
+       LIMIT 20000`,
+      [patterns],
+    );
+    return result.rows
+      .map((row) => Number(row.canonical_external_id))
+      .filter((id) => Number.isFinite(id));
+  } catch (error: any) {
+    if (error?.code !== "42P01") logger.warn({ error }, "Explicit availability candidate lookup failed");
+    return [];
+  }
+}
+
 async function getExplicitIntelligence(externalIds: number[]): Promise<{
   availability: Map<number, string[]>;
   pricingCounts: Map<number, number>;
@@ -277,8 +297,6 @@ async function getExplicitIntelligence(externalIds: number[]): Promise<{
       pricingCounts.set(Number(row.canonical_external_id), Number(row.pricing_count) || 0);
     }
   } catch (error: any) {
-    // The core network snapshot can be imported before the auxiliary intelligence
-    // snapshot. Missing aux tables should not make existing-network search fail.
     if (error?.code !== "42P01") logger.warn({ error }, "Explicit network intelligence enrichment failed");
   }
 
@@ -302,12 +320,26 @@ async function searchExistingNetwork(params: {
   const country = normalizeCountry(params.country);
   const state = clean(params.state, 100);
   const city = clean(params.city, 120);
+  const requiredServices = params.services || [];
+  const explicitCandidateIds = await getExplicitCandidateIds(requiredServices);
 
-  if (query) {
+  if (requiredServices.length > 0) {
+    const serviceCandidateClauses: string[] = [];
+    if (explicitCandidateIds.length > 0) {
+      values.push(explicitCandidateIds);
+      serviceCandidateClauses.push(`external_id = ANY($${values.length}::int[])`);
+    }
+    for (const service of requiredServices) {
+      values.push(`%${service}%`);
+      serviceCandidateClauses.push(`services::text ILIKE $${values.length}`);
+    }
+    if (serviceCandidateClauses.length > 0) where.push(`(${serviceCandidateClauses.join(" OR ")})`);
+  } else if (query) {
     values.push(`%${query}%`);
     const p = `$${values.length}`;
     where.push(`(name ILIKE ${p} OR organization_name ILIKE ${p} OR site_name ILIKE ${p} OR facility_type ILIKE ${p} OR city ILIKE ${p} OR state_region ILIKE ${p} OR address1 ILIKE ${p} OR services::text ILIKE ${p})`);
   }
+
   if (country) {
     values.push(country);
     where.push(`country ILIKE $${values.length}`);
@@ -346,7 +378,6 @@ async function searchExistingNetwork(params: {
       .filter((id) => Number.isFinite(id)),
   )];
   const explicit = await getExplicitIntelligence(externalIds);
-  const requiredServices = params.services || [];
 
   return result.rows.map((row) => {
     const externalId = Number.isFinite(Number(row.external_id)) ? Number(row.external_id) : null;
