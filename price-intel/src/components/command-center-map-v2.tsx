@@ -158,13 +158,23 @@ export function CommandCenterMapV2({ filterQuery, selectedId, onSelect }: Props)
         map.once("load", () => {
           if (disposed) return;
           setMapReady(true);
-          map.on("click", "cc-provider-core", (event: any) => {
-            const feature = event.features?.[0];
+
+          map.on("click", (event: any) => {
+            if (!map.getLayer("cc-provider-core")) return;
+            const features = map.queryRenderedFeatures(event.point, { layers: ["cc-provider-core"] });
+            const feature = features?.[0];
             const point = pointByIdRef.current.get(String(feature?.properties?.id ?? ""));
             if (point) selectRef.current?.(point);
           });
-          map.on("mouseenter", "cc-provider-core", () => { map.getCanvas().style.cursor = "pointer"; });
-          map.on("mouseleave", "cc-provider-core", () => { map.getCanvas().style.cursor = ""; });
+
+          map.on("mousemove", (event: any) => {
+            if (!map.getLayer("cc-provider-core")) {
+              map.getCanvas().style.cursor = "";
+              return;
+            }
+            const features = map.queryRenderedFeatures(event.point, { layers: ["cc-provider-core"] });
+            map.getCanvas().style.cursor = features.length ? "pointer" : "";
+          });
         });
       } catch (cause) {
         if (!disposed) setError(cause instanceof Error ? cause.message : "Map service is not configured.");
@@ -260,7 +270,10 @@ export function CommandCenterMapV2({ filterQuery, selectedId, onSelect }: Props)
 
   const legend = colorMode === "agreement"
     ? [
-        ["Active Agreement", "#4B6F93"], ["Expired", "#1E2A3A"], ["No Agreement / Unmatched", "#EEF2F6"], ["2026 New / Unreconciled", "#B6C7D6"],
+        ["Active Agreement", "#4B6F93"],
+        ["Expired", "#1E2A3A"],
+        ["No Agreement / Unmatched", "#EEF2F6"],
+        ["2026 New / Unreconciled", "#B6C7D6"],
       ]
     : colorMode === "service"
       ? SERVICE_GROUPS.slice(0, 8).map((label) => [label, indexedColor(label, serviceUniverse)])
@@ -339,7 +352,7 @@ export function CommandCenterMapV2({ filterQuery, selectedId, onSelect }: Props)
             <div className="ccm2-badges">
               <span className="ccm2-badge">{selected.networkStatus || "Status not listed"}</span>
               {selected.facilityType && <span className="ccm2-badge">{selected.facilityType}</span>}
-              {(selected.services || []).slice(0, 6).map((service) => <span className="ccm2-badge" key={service}>{service}</span>)}
+              {(selected.services || []).slice(0, 6).map((service, index) => <span className="ccm2-badge" key={`${service}-${index}`}>{service}</span>)}
             </div>
           </div>
         )}
