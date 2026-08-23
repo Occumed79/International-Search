@@ -1,52 +1,13 @@
-import express, { Router, type IRouter, type Request } from "express";
-import { gunzipSync } from "node:zlib";
+import { Router, type IRouter } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { runApiProviderSearch } from "../services/apiProviderSearch";
 
 const router: IRouter = Router();
-const MAX_IMPORT_RECORDS = 100_000;
 const DEFAULT_LIMIT = 100;
-
-type CommandCenterRow = Record<string, unknown>;
-
-type NetworkRecord = {
-  externalId: number | null;
-  name: string;
-  organizationName: string;
-  siteName: string;
-  facilityType: string;
-  networkStatus: string;
-  visible: boolean | null;
-  country: string;
-  stateRegion: string;
-  city: string;
-  address1: string;
-  address2: string;
-  postalCode: string;
-  latitude: number | null;
-  longitude: number | null;
-  phone: string;
-  services: string[];
-  lastAppointment: string;
-  pricingAvailable: boolean;
-  agreementComponentIds: string;
-  serviceComponentIds: string;
-  activity2026: string;
-  sourceStatus: string;
-};
 
 function clean(value: unknown, max = 500): string {
   return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, max);
-}
-
-function cleanMultiline(value: unknown, max = 8_000): string {
-  return String(value ?? "").trim().slice(0, max);
-}
-
-function asNumber(value: unknown): number | null {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
 }
 
 function normalizeName(value: unknown): string {
@@ -60,67 +21,26 @@ function normalizeCountry(value: unknown): string {
   return raw;
 }
 
-function commandCenterRowToNetwork(row: CommandCenterRow): NetworkRecord | null {
-  const name = clean(row.n || row.site || row.org, 240);
-  if (!name) return null;
-  const services = Array.isArray(row.sv)
-    ? row.sv.map((value) => clean(value, 160)).filter(Boolean)
-    : clean(row.sv, 2_000).split(/[|,;\n]+/).map((value) => value.trim()).filter(Boolean);
-
-  return {
-    externalId: asNumber(row.i),
-    name,
-    organizationName: clean(row.org || row.n, 240),
-    siteName: clean(row.site || row.n, 240),
-    facilityType: clean(row.ft, 120),
-    networkStatus: clean(row.st, 120) || "Unknown",
-    visible: typeof row.v === "boolean" ? row.v : null,
-    country: normalizeCountry(row.co),
-    stateRegion: clean(row.rg, 100),
-    city: clean(row.cy || row.cty, 120),
-    address1: clean(row.a, 300),
-    address2: clean(row.a2, 200),
-    postalCode: clean(row.z, 40),
-    latitude: asNumber(row.lat),
-    longitude: asNumber(row.lon),
-    phone: clean(row.ph, 80),
-    services: [...new Set(services)],
-    lastAppointment: clean(row.la || row.us2_last_appt, 100),
-    pricingAvailable: Boolean(row.us2_pricing_flag || clean(row.pa, 20)),
-    agreementComponentIds: cleanMultiline(row.pa),
-    serviceComponentIds: cleanMultiline(row.ps),
-    activity2026: clean(row.y26 || row.p26 || row.m26, 240),
-    sourceStatus: clean(row.source_status, 160),
-  };
+function splitServices(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map((item) => clean(item, 160)).filter(Boolean);
+  return clean(value, 2_000).split(/[|,;\n]+/).map((item) => item.trim()).filter(Boolean);
 }
 
-function decodeImportedRecords(buffer: Buffer): CommandCenterRow[] {
-  if (!buffer.length) throw new Error("Uploaded Command Center file is empty.");
-  const asText = buffer.toString("utf8");
-
-  if (/<!doctype html|<html/i.test(asText.slice(0, 2_000))) {
-    const match = asText.match(/const\s+PAYLOAD\s*=\s*"([A-Za-z0-9+/=]+)"\s*;/);
-    if (!match?.[1]) throw new Error("Could not locate the embedded Command Center PAYLOAD.");
-    const decoded = gunzipSync(Buffer.from(match[1], "base64")).toString("utf8");
-    const rows = JSON.parse(decoded);
-    if (!Array.isArray(rows)) throw new Error("Command Center payload was not a provider-record array.");
-    return rows;
+function coverageScore(available: string[], required: string[]): { matched: string[]; missing: string[]; ratio: number } {
+  if (!required.length) return { matched: [], missing: [], ratio: 1 };
+  const normalizedAvailable = available.map((item) => item.toLowerCase());
+  const matched: string[] = [];
+  const missing: string[] = [];
+  for (const requirement of required) {
+    const needle = requirement.toLowerCase();
+    const hit = normalizedAvailable.some((service) => service.includes(needle) || needle.includes(service));
+    (hit ? matched : missing).push(requirement);
   }
-
-  try {
-    const unzipped = gunzipSync(buffer).toString("utf8");
-    const rows = JSON.parse(unzipped);
-    if (!Array.isArray(rows)) throw new Error("Snapshot was not a provider-record array.");
-    return rows;
-  } catch {
-    const rows = JSON.parse(asText);
-    if (!Array.isArray(rows)) throw new Error("Uploaded JSON was not a provider-record array.");
-    return rows;
-  }
+  return { matched, missing, ratio: matched.length / required.length };
 }
 
 async function ensureNetworkTable(): Promise<void> {
-  if (!pool) throw new Error("DATABASE_URL is required to use the existing-network dataset.");
+  if (!pool) throw new Error("NEON_DATABASE_URL is required for the provider network.");
   await pool.query(`
     CREATE TABLE IF NOT EXISTS network_provider_snapshot (
       id BIGSERIAL PRIMARY KEY,
@@ -156,93 +76,6 @@ async function ensureNetworkTable(): Promise<void> {
   `);
 }
 
-async function importNetworkRecords(records: NetworkRecord[]): Promise<number> {
-  if (!pool) throw new Error("DATABASE_URL is required to import the existing-network dataset.");
-  await ensureNetworkTable();
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    await client.query("TRUNCATE network_provider_snapshot RESTART IDENTITY");
-
-    const batchSize = 2_000;
-    for (let start = 0; start < records.length; start += batchSize) {
-      const batch = records.slice(start, start + batchSize).map((record) => ({
-        external_id: record.externalId,
-        name: record.name,
-        organization_name: record.organizationName,
-        site_name: record.siteName,
-        facility_type: record.facilityType,
-        network_status: record.networkStatus,
-        visible: record.visible,
-        country: record.country,
-        state_region: record.stateRegion,
-        city: record.city,
-        address1: record.address1,
-        address2: record.address2,
-        postal_code: record.postalCode,
-        latitude: record.latitude,
-        longitude: record.longitude,
-        phone: record.phone,
-        services: record.services,
-        last_appointment: record.lastAppointment,
-        pricing_available: record.pricingAvailable,
-        agreement_component_ids: record.agreementComponentIds,
-        service_component_ids: record.serviceComponentIds,
-        activity_2026: record.activity2026,
-        source_status: record.sourceStatus,
-      }));
-
-      await client.query(
-        `INSERT INTO network_provider_snapshot (
-          external_id, name, organization_name, site_name, facility_type, network_status, visible,
-          country, state_region, city, address1, address2, postal_code, latitude, longitude, phone,
-          services, last_appointment, pricing_available, agreement_component_ids, service_component_ids,
-          activity_2026, source_status
-        )
-        SELECT
-          x.external_id, x.name, x.organization_name, x.site_name, x.facility_type, x.network_status, x.visible,
-          x.country, x.state_region, x.city, x.address1, x.address2, x.postal_code, x.latitude, x.longitude, x.phone,
-          x.services, x.last_appointment, x.pricing_available, x.agreement_component_ids, x.service_component_ids,
-          x.activity_2026, x.source_status
-        FROM jsonb_to_recordset($1::jsonb) AS x(
-          external_id INTEGER, name TEXT, organization_name TEXT, site_name TEXT, facility_type TEXT,
-          network_status TEXT, visible BOOLEAN, country TEXT, state_region TEXT, city TEXT, address1 TEXT,
-          address2 TEXT, postal_code TEXT, latitude DOUBLE PRECISION, longitude DOUBLE PRECISION, phone TEXT,
-          services JSONB, last_appointment TEXT, pricing_available BOOLEAN, agreement_component_ids TEXT,
-          service_component_ids TEXT, activity_2026 TEXT, source_status TEXT
-        )`,
-        [JSON.stringify(batch)],
-      );
-    }
-
-    await client.query("COMMIT");
-    return records.length;
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
-}
-
-function splitServices(value: unknown): string[] {
-  if (Array.isArray(value)) return value.map((item) => clean(item, 160)).filter(Boolean);
-  return clean(value, 2_000).split(/[|,;\n]+/).map((item) => item.trim()).filter(Boolean);
-}
-
-function coverageScore(available: string[], required: string[]): { matched: string[]; missing: string[]; ratio: number } {
-  if (!required.length) return { matched: [], missing: [], ratio: 1 };
-  const normalizedAvailable = available.map((item) => item.toLowerCase());
-  const matched: string[] = [];
-  const missing: string[] = [];
-  for (const requirement of required) {
-    const needle = requirement.toLowerCase();
-    const hit = normalizedAvailable.some((service) => service.includes(needle) || needle.includes(service));
-    (hit ? matched : missing).push(requirement);
-  }
-  return { matched, missing, ratio: matched.length / required.length };
-}
-
 async function getExplicitCandidateIds(requiredServices: string[]): Promise<number[]> {
   if (!pool || requiredServices.length === 0) return [];
   const patterns = requiredServices.map((service) => `%${service}%`);
@@ -254,9 +87,7 @@ async function getExplicitCandidateIds(requiredServices: string[]): Promise<numb
        LIMIT 20000`,
       [patterns],
     );
-    return result.rows
-      .map((row) => Number(row.canonical_external_id))
-      .filter((id) => Number.isFinite(id));
+    return result.rows.map((row) => Number(row.canonical_external_id)).filter((id) => Number.isFinite(id));
   } catch (error: any) {
     if (error?.code !== "42P01") logger.warn({ error }, "Explicit availability candidate lookup failed");
     return [];
@@ -323,22 +154,21 @@ async function searchExistingNetwork(params: {
   const requiredServices = params.services || [];
   const explicitCandidateIds = await getExplicitCandidateIds(requiredServices);
 
-  if (requiredServices.length > 0) {
-    const serviceCandidateClauses: string[] = [];
-    if (explicitCandidateIds.length > 0) {
-      values.push(explicitCandidateIds);
-      serviceCandidateClauses.push(`external_id = ANY($${values.length}::int[])`);
-    }
-    for (const service of requiredServices) {
-      values.push(`%${service}%`);
-      serviceCandidateClauses.push(`services::text ILIKE $${values.length}`);
-    }
-    if (serviceCandidateClauses.length > 0) where.push(`(${serviceCandidateClauses.join(" OR ")})`);
-  } else if (query) {
+  const discoveryClauses: string[] = [];
+  if (query) {
     values.push(`%${query}%`);
     const p = `$${values.length}`;
-    where.push(`(name ILIKE ${p} OR organization_name ILIKE ${p} OR site_name ILIKE ${p} OR facility_type ILIKE ${p} OR city ILIKE ${p} OR state_region ILIKE ${p} OR address1 ILIKE ${p} OR services::text ILIKE ${p})`);
+    discoveryClauses.push(`name ILIKE ${p}`, `organization_name ILIKE ${p}`, `site_name ILIKE ${p}`, `facility_type ILIKE ${p}`, `services::text ILIKE ${p}`);
   }
+  if (explicitCandidateIds.length > 0) {
+    values.push(explicitCandidateIds);
+    discoveryClauses.push(`external_id = ANY($${values.length}::int[])`);
+  }
+  for (const service of requiredServices) {
+    values.push(`%${service}%`);
+    discoveryClauses.push(`services::text ILIKE $${values.length}`);
+  }
+  if (discoveryClauses.length) where.push(`(${discoveryClauses.join(" OR ")})`);
 
   if (country) {
     values.push(country);
@@ -372,21 +202,16 @@ async function searchExistingNetwork(params: {
     values,
   );
 
-  const externalIds = [...new Set(
-    result.rows
-      .map((row) => Number(row.external_id))
-      .filter((id) => Number.isFinite(id)),
-  )];
+  const externalIds = [...new Set(result.rows.map((row) => Number(row.external_id)).filter((id) => Number.isFinite(id)))];
   const explicit = await getExplicitIntelligence(externalIds);
 
   return result.rows.map((row) => {
     const externalId = Number.isFinite(Number(row.external_id)) ? Number(row.external_id) : null;
     const taggedServices = Array.isArray(row.services) ? row.services.map(String) : [];
     const explicitAvailability = externalId == null ? [] : (explicit.availability.get(externalId) || []);
-    const services = [...new Set([...taggedServices, ...explicitAvailability])];
-    const coverage = coverageScore(services, requiredServices);
-    const pricingLineCount = externalId == null ? 0 : (explicit.pricingCounts.get(externalId) || 0);
-
+    const allServices = [...new Set([...taggedServices, ...explicitAvailability])];
+    const pricingCount = externalId == null ? 0 : (explicit.pricingCounts.get(externalId) || 0);
+    const coverage = coverageScore(allServices, requiredServices);
     return {
       id: `network-${row.id}`,
       externalId,
@@ -404,19 +229,17 @@ async function searchExistingNetwork(params: {
       latitude: row.latitude,
       longitude: row.longitude,
       phone: row.phone,
-      services,
-      taggedServices,
+      services: allServices,
       explicitAvailability,
-      explicitAvailabilityCount: explicitAvailability.length,
       lastAppointment: row.last_appointment,
-      pricingAvailable: Boolean(row.pricing_available || pricingLineCount > 0),
-      pricingLineCount,
+      pricingAvailable: Boolean(row.pricing_available || pricingCount > 0),
+      pricingCount,
       activity2026: row.activity_2026,
       sourceStatus: row.source_status,
       matchedServices: coverage.matched,
       missingServices: coverage.missing,
       coverageRatio: coverage.ratio,
-      source: "existing_network",
+      source: "existing_network" as const,
     };
   }).sort((a, b) => {
     if (b.coverageRatio !== a.coverageRatio) return b.coverageRatio - a.coverageRatio;
@@ -425,28 +248,6 @@ async function searchExistingNetwork(params: {
     return String(a.providerName).localeCompare(String(b.providerName));
   });
 }
-
-router.post(
-  "/network/import",
-  express.raw({ type: ["text/html", "application/octet-stream", "application/gzip", "application/x-gzip", "text/plain"], limit: "30mb" }),
-  async (req: Request, res): Promise<void> => {
-    try {
-      if (!pool) {
-        res.status(503).json({ error: "DATABASE_URL is required before importing the network snapshot." });
-        return;
-      }
-      const buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(String(req.body || ""));
-      const decoded = decodeImportedRecords(buffer);
-      if (decoded.length > MAX_IMPORT_RECORDS) throw new Error(`Snapshot contains ${decoded.length} records; maximum is ${MAX_IMPORT_RECORDS}.`);
-      const records = decoded.map(commandCenterRowToNetwork).filter((row): row is NetworkRecord => Boolean(row));
-      const imported = await importNetworkRecords(records);
-      res.json({ imported, sourceRecords: decoded.length, message: "Existing Occu-Med network snapshot imported." });
-    } catch (error) {
-      logger.error({ error }, "Command Center snapshot import failed");
-      res.status(400).json({ error: error instanceof Error ? error.message : "Snapshot import failed." });
-    }
-  },
-);
 
 router.get("/network/stats", async (_req, res): Promise<void> => {
   try {
@@ -530,17 +331,11 @@ router.post("/sourcing/search", async (req, res): Promise<void> => {
       fallbackUsed = externalSearch.fallbackUsed;
 
       const existingNames = new Set(existing.map((row) => normalizeName(row.providerName)));
-      external = externalSearch.results.map((hit) => {
-        const nameKey = normalizeName(hit.providerName);
-        return {
-          ...hit,
-          source: "outside_network",
-          networkStatus: existingNames.has(nameKey) ? "Existing / possible match" : "NEW — not in current network search",
-          matchedServices: services,
-          missingServices: [],
-          coverageRatio: services.length ? 0.5 : 1,
-        };
-      });
+      external = externalSearch.results.map((hit) => ({
+        ...hit,
+        source: "outside_network",
+        networkStatus: existingNames.has(normalizeName(hit.providerName)) ? "Existing / possible match" : "NEW — not in current network search",
+      }));
     }
 
     res.json({
