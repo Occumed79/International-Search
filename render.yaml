@@ -14,13 +14,13 @@ services:
         value: /
       - key: DATABASE_URL
         sync: false
-      - key: SERPER_API_KEY
+      - key: KEENABLE_API_KEY
         sync: false
-      - key: TAVILY_API_KEY
+      - key: TINYFISH_API_KEY
         sync: false
       - key: EXA_API_KEY
         sync: false
-      - key: KEENABLE_API_KEY
+      - key: TAVILY_API_KEY
         sync: false
       - key: FIRECRAWL_API_KEY
         sync: false
