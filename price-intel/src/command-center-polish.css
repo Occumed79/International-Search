@@ -1,0 +1,204 @@
+/* Command Center v2 visual integration: same blue-glass product language as the rest of Global Intelligence. */
+
+.cc2-page {
+  color: #EEF2F6 !important;
+  background:
+    radial-gradient(circle at 12% 4%, rgba(182,199,214,.24), transparent 30%),
+    radial-gradient(circle at 86% 12%, rgba(75,111,147,.46), transparent 38%),
+    linear-gradient(135deg, #1E2A3A 0%, #2D4358 38%, #4B6F93 72%, #7F9AB1 118%) !important;
+}
+
+.cc2-side {
+  background: linear-gradient(165deg, rgba(30,42,58,.94), rgba(45,66,86,.88)) !important;
+  border-color: rgba(182,199,214,.24) !important;
+  box-shadow: 0 16px 44px rgba(15,23,34,.35), inset 0 1px 0 rgba(255,254,254,.07) !important;
+  color: #EEF2F6 !important;
+}
+.cc2-logo img {
+  filter: none !important;
+  opacity: .96 !important;
+}
+.cc2-logo h2 { color: #FFFEFE !important; }
+.cc2-logo p,
+.cc2-label,
+.cc2-field label,
+.cc2-note,
+.cc2-mode,
+.cc2-sub,
+.cc2-detail-block h4,
+.cc2-kv .k,
+.cc2-section-head p,
+.cc2-stat span,
+.cc2-stat small {
+  color: #B6C7D6 !important;
+}
+.cc2-mode button { color: #EEF2F6 !important; }
+
+.cc2-field input,
+.cc2-field select,
+.cc2-clear {
+  background: rgba(238,242,246,.08) !important;
+  border-color: rgba(182,199,214,.20) !important;
+  color: #FFFEFE !important;
+  box-shadow: inset 0 1px 0 rgba(255,254,254,.03) !important;
+}
+.cc2-field input::placeholder { color: rgba(182,199,214,.52) !important; }
+.cc2-field select option,
+.cc2-toolbar select option {
+  background: #1E2A3A !important;
+  color: #EEF2F6 !important;
+}
+.cc2-chip {
+  background: rgba(238,242,246,.07) !important;
+  border-color: rgba(182,199,214,.18) !important;
+  color: #EEF2F6 !important;
+}
+.cc2-chip:hover { background: rgba(182,199,214,.14) !important; }
+.cc2-chip.on {
+  background: #4B6F93 !important;
+  border-color: #B6C7D6 !important;
+  color: #FFFEFE !important;
+  box-shadow: 0 0 18px rgba(182,199,214,.20) !important;
+}
+.cc2-mini div {
+  background: rgba(238,242,246,.06) !important;
+  border-color: rgba(182,199,214,.16) !important;
+}
+.cc2-mini b { color: #FFFEFE !important; }
+
+.cc2-work {
+  background: linear-gradient(145deg, rgba(30,42,58,.78), rgba(75,111,147,.38)) !important;
+  border-color: rgba(182,199,214,.22) !important;
+  box-shadow: 0 18px 48px rgba(15,23,34,.34), inset 0 1px 0 rgba(255,254,254,.06) !important;
+  color: #EEF2F6 !important;
+}
+.cc2-section-head h1,
+.cc2-section-head h2,
+.cc2-panel h3,
+.cc2-detail-block h3,
+.cc2-group-head b,
+.cc2-card b { color: #FFFEFE !important; }
+
+.cc2-toolbar input,
+.cc2-toolbar select,
+.cc2-toolbar button {
+  background: rgba(238,242,246,.09) !important;
+  border-color: rgba(182,199,214,.20) !important;
+  color: #EEF2F6 !important;
+}
+.cc2-toolbar input::placeholder { color: rgba(182,199,214,.52) !important; }
+.cc2-toolbar button:hover,
+.cc2-clear:hover {
+  background: rgba(182,199,214,.16) !important;
+  border-color: rgba(238,242,246,.34) !important;
+}
+
+.cc2-dir-main { border-right-color: rgba(182,199,214,.14) !important; }
+.cc2-group {
+  background: rgba(30,42,58,.34) !important;
+  border-color: rgba(182,199,214,.16) !important;
+}
+.cc2-group-head {
+  background: rgba(75,111,147,.22) !important;
+  border-bottom-color: rgba(182,199,214,.14) !important;
+}
+.cc2-card {
+  background: linear-gradient(145deg, rgba(30,42,58,.82), rgba(75,111,147,.42)) !important;
+  border-color: rgba(182,199,214,.18) !important;
+  color: #EEF2F6 !important;
+  box-shadow: 0 6px 18px rgba(15,23,34,.20) !important;
+}
+.cc2-card:hover {
+  border-color: rgba(182,199,214,.58) !important;
+  box-shadow: 0 12px 28px rgba(15,23,34,.30), 0 0 22px rgba(75,111,147,.18) !important;
+}
+.cc2-card.on {
+  border-color: #B6C7D6 !important;
+  box-shadow: 0 0 0 2px rgba(182,199,214,.22), 0 13px 30px rgba(15,23,34,.28) !important;
+}
+.cc2-tag {
+  background: rgba(182,199,214,.10) !important;
+  border-color: rgba(182,199,214,.24) !important;
+  color: #EEF2F6 !important;
+}
+.cc2-detail {
+  background: rgba(30,42,58,.30) !important;
+}
+.cc2-detail-block {
+  background: linear-gradient(145deg, rgba(30,42,58,.84), rgba(75,111,147,.34)) !important;
+  border-color: rgba(182,199,214,.18) !important;
+  color: #EEF2F6 !important;
+}
+.cc2-line { border-top-color: rgba(182,199,214,.14) !important; }
+.cc2-price { color: #D5E0E8 !important; }
+
+.cc2-stat,
+.cc2-panel {
+  background: linear-gradient(145deg, rgba(30,42,58,.76), rgba(75,111,147,.34)) !important;
+  border-color: rgba(182,199,214,.18) !important;
+  color: #EEF2F6 !important;
+  box-shadow: 0 8px 22px rgba(15,23,34,.18) !important;
+}
+.cc2-stat b { color: #FFFEFE !important; }
+
+.cc2-tablebox {
+  background: rgba(30,42,58,.40) !important;
+  border-color: rgba(182,199,214,.18) !important;
+}
+.cc2-table { color: #EEF2F6 !important; }
+.cc2-table th {
+  background: rgba(30,42,58,.96) !important;
+  color: #B6C7D6 !important;
+  border-bottom-color: rgba(182,199,214,.20) !important;
+}
+.cc2-table td {
+  border-bottom-color: rgba(182,199,214,.11) !important;
+}
+.cc2-table tbody tr:hover { background: rgba(182,199,214,.06) !important; }
+
+.cc2-callout {
+  background: linear-gradient(145deg, #1E2A3A, #4B6F93) !important;
+  color: #FFFEFE !important;
+  border: 1px solid rgba(182,199,214,.18) !important;
+}
+.cc2-callout:nth-child(even) {
+  background: linear-gradient(145deg, rgba(75,111,147,.92), rgba(182,199,214,.68)) !important;
+  color: #1E2A3A !important;
+}
+.cc2-bar-track { background: rgba(238,242,246,.10) !important; }
+.cc2-bar { background: #B6C7D6 !important; box-shadow: 0 0 12px rgba(182,199,214,.28); }
+.cc2-gap.strong { background: rgba(238,242,246,.14) !important; color: #EEF2F6 !important; }
+.cc2-gap.moderate { background: #B6C7D6 !important; color: #1E2A3A !important; }
+.cc2-gap.limited { background: #4B6F93 !important; color: #FFFEFE !important; }
+.cc2-gap.zero,
+.cc2-gap.critical { background: #1E2A3A !important; color: #FFFEFE !important; border: 1px solid rgba(182,199,214,.20); }
+
+.cc2-loading div {
+  background: rgba(30,42,58,.92) !important;
+  color: #EEF2F6 !important;
+  border-color: rgba(182,199,214,.24) !important;
+}
+
+/* Map stays cartographically bright, while its chrome and detail rail match the app. */
+.ccm2-side {
+  background: linear-gradient(180deg, rgba(30,42,58,.96), rgba(75,111,147,.84)) !important;
+  color: #EEF2F6 !important;
+  border-left-color: rgba(182,199,214,.22) !important;
+}
+.ccm2-side h3 { color: #FFFEFE !important; }
+.ccm2-side p,
+.ccm2-meta,
+.ccm2-list span { color: #B6C7D6 !important; }
+.ccm2-selected,
+.ccm2-list button {
+  background: linear-gradient(145deg, rgba(30,42,58,.90), rgba(75,111,147,.52)) !important;
+  color: #EEF2F6 !important;
+  border-color: rgba(182,199,214,.20) !important;
+}
+.ccm2-selected h4,
+.ccm2-list b { color: #FFFEFE !important; }
+.ccm2-badge {
+  background: rgba(182,199,214,.11) !important;
+  color: #EEF2F6 !important;
+  border-color: rgba(182,199,214,.25) !important;
+}
