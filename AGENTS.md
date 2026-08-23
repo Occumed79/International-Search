@@ -24,7 +24,9 @@ These rules are explicit user requirements for all future work on this repositor
 
 - **Preserve the established frontend, visual identity, navigation shell, and interaction patterns unless the user explicitly requests a redesign.** Functional repurposing, new APIs, database changes, or new sourcing logic do not authorize a visual redesign.
 - Keep the existing Global Intelligence / Portal 5 shell and established page styling as the baseline. Add new capabilities inside that interface rather than replacing the application.
-- The HTML Command Center design is an approved **additive workspace** inside Portal 5. It may inform contained workspace styling and functionality, but it must not replace the existing provider-search experience.
+- The HTML Command Center design is an approved **additive workspace** inside Portal 5. It must remain a full analytical workspace rather than a simplified provider-search substitute.
+- Preserve the Command Center's core HTML feature set: **Directory, Map, Coverage, Organizations, Pricing, Line Item Availability, Data Quality, and Source Audit** plus its network-status, visibility, 2026-activity, documented-service, geography/facility, grouping, sorting, and filtered-snapshot controls unless the user explicitly asks to remove a capability.
+- The Command Center map must use **MapTiler**, not Leaflet, and should preserve one physical clinic per point rather than silently clustering/entity-collapsing the network.
 - Use the same Occu-Med wordmark/brand asset used by the Insight Hub landing page on the main provider-search hero.
 - **Do not add a portal switcher/drop-down menu to this app.** The header may link back to the Hub, but Portal 5 does not need to reproduce the Hub's portal selector.
 - **Do not expose backend implementation details, vendor/API names, fallback order, connector brands, database technology, or provider-routing logic in user-facing copy.** In particular, names such as Keenable, TinyFish, Exa, Serper, Neon, or similar infrastructure/vendor identifiers must remain backend-only unless the user explicitly asks to display them.
