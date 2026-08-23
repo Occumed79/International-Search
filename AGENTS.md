@@ -24,6 +24,8 @@ These rules are explicit user requirements for all future work on this repositor
 
 - **Preserve the established frontend, visual identity, navigation shell, and interaction patterns unless the user explicitly requests a redesign.** Functional repurposing, new APIs, database changes, or new sourcing logic do not authorize a visual redesign.
 - Keep the existing Global Intelligence / Portal 5 shell and established page styling as the baseline. Add new capabilities inside that interface rather than replacing the application.
+- **Use the approved global palette across every user-facing tab and workspace:** `#FFFEFE`, `#EEF2F6`, `#B6C7D6`, `#4B6F93`, and `#1E2A3A`. Do not reintroduce the prior purple/violet/maroon theme unless the user explicitly requests another palette.
+- Apply that palette consistently to Search, Command Center, Map controls/markers, provider cards, provider detail panels, Bookmarks, History, Diagnostics, navigation, hover/active states, loading/empty states, tables, filters, and scrollbars.
 - The HTML Command Center design is an approved **additive workspace** inside Portal 5. It must remain a full analytical workspace rather than a simplified provider-search substitute.
 - Preserve the Command Center's core HTML feature set: **Directory, Map, Coverage, Organizations, Pricing, Line Item Availability, Data Quality, and Source Audit** plus its network-status, visibility, 2026-activity, documented-service, geography/facility, grouping, sorting, and filtered-snapshot controls unless the user explicitly asks to remove a capability.
 - The Command Center map must use **MapTiler**, not Leaflet, and should preserve one physical clinic per point rather than silently clustering/entity-collapsing the network.
