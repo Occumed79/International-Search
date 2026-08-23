@@ -1,5 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { bootstrapNetworkData } from "./services/networkBootstrap";
 
 const rawPort = process.env["PORT"];
 
@@ -15,11 +16,15 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-app.listen(port, (err) => {
-  if (err) {
-    logger.error({ err }, "Error listening on port");
-    process.exit(1);
-  }
+async function start(): Promise<void> {
+  await bootstrapNetworkData();
 
-  logger.info({ port }, "Server listening");
+  app.listen(port, () => {
+    logger.info({ port }, "Server listening");
+  });
+}
+
+void start().catch((error: unknown) => {
+  logger.error({ error }, "Application startup failed");
+  process.exit(1);
 });
