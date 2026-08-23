@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { gunzipSync } from "node:zlib";
@@ -9,6 +9,7 @@ const DATASET_KEY = "occumed-command-center";
 const DATASET_FILENAME = "OccuMed_Command_Center.html";
 const PROVIDER_BATCH_SIZE = 2_000;
 const INTELLIGENCE_BATCH_SIZE = 4_000;
+const STAGING_RETENTION_HOURS = 24;
 
 type CommandCenterRow = Record<string, unknown>;
 
@@ -46,8 +47,6 @@ type AuxSnapshot = {
   availability: unknown[][];
   meta?: Record<string, unknown>;
 };
-
-type DbClient = Awaited<ReturnType<NonNullable<typeof pool>["connect"]>>;
 
 type DatasetCounts = {
   providers: number;
@@ -175,8 +174,8 @@ function clinicFields(aux: AuxSnapshot, clinicIndex: number): Record<string, unk
   };
 }
 
-async function ensureLiveTables(client: DbClient): Promise<void> {
-  await client.query(`
+async function ensureTables(dbPool: NonNullable<typeof pool>): Promise<void> {
+  await dbPool.query(`
     CREATE TABLE IF NOT EXISTS network_provider_snapshot (
       id BIGSERIAL PRIMARY KEY,
       external_id INTEGER,
@@ -263,11 +262,89 @@ async function ensureLiveTables(client: DbClient): Promise<void> {
       availability_count INTEGER NOT NULL,
       loaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS network_provider_stage (
+      run_id TEXT NOT NULL,
+      external_id INTEGER,
+      name TEXT NOT NULL,
+      organization_name TEXT,
+      site_name TEXT,
+      facility_type TEXT,
+      network_status TEXT,
+      visible BOOLEAN,
+      country TEXT,
+      state_region TEXT,
+      city TEXT,
+      address1 TEXT,
+      address2 TEXT,
+      postal_code TEXT,
+      latitude DOUBLE PRECISION,
+      longitude DOUBLE PRECISION,
+      phone TEXT,
+      services JSONB NOT NULL DEFAULT '[]'::jsonb,
+      last_appointment TEXT,
+      pricing_available BOOLEAN NOT NULL DEFAULT FALSE,
+      agreement_component_ids TEXT,
+      service_component_ids TEXT,
+      activity_2026 TEXT,
+      source_status TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS network_provider_stage_run_idx ON network_provider_stage (run_id);
+
+    CREATE TABLE IF NOT EXISTS network_pricing_stage (
+      run_id TEXT NOT NULL,
+      canonical_external_id INTEGER,
+      network_name TEXT,
+      site_name TEXT,
+      address1 TEXT,
+      address2 TEXT,
+      city TEXT,
+      state_region TEXT,
+      postal_code TEXT,
+      phone TEXT,
+      country TEXT,
+      provider_type TEXT,
+      component_name TEXT NOT NULL,
+      numeric_price DOUBLE PRECISION,
+      source_price_text TEXT,
+      effective_date TEXT,
+      expiration_date TEXT,
+      line_item_created TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS network_pricing_stage_run_idx ON network_pricing_stage (run_id);
+
+    CREATE TABLE IF NOT EXISTS network_availability_stage (
+      run_id TEXT NOT NULL,
+      canonical_external_id INTEGER,
+      network_name TEXT,
+      site_name TEXT,
+      address1 TEXT,
+      address2 TEXT,
+      city TEXT,
+      state_region TEXT,
+      postal_code TEXT,
+      phone TEXT,
+      country TEXT,
+      provider_type TEXT,
+      component_name TEXT NOT NULL,
+      component_type TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS network_availability_stage_run_idx ON network_availability_stage (run_id);
   `);
+
+  await dbPool.query(
+    `DELETE FROM network_provider_stage WHERE created_at < NOW() - ($1::text || ' hours')::interval;
+     DELETE FROM network_pricing_stage WHERE created_at < NOW() - ($1::text || ' hours')::interval;
+     DELETE FROM network_availability_stage WHERE created_at < NOW() - ($1::text || ' hours')::interval;`,
+    [String(STAGING_RETENTION_HOURS)],
+  );
 }
 
-async function getCurrentDatasetState(client: DbClient): Promise<{ hash: string; counts: DatasetCounts } | null> {
-  const state = await client.query(
+async function getCurrentDatasetState(dbPool: NonNullable<typeof pool>): Promise<{ hash: string; counts: DatasetCounts } | null> {
+  const state = await dbPool.query(
     `SELECT source_sha256, provider_count, pricing_count, availability_count
      FROM network_dataset_state
      WHERE dataset_key = $1`,
@@ -286,8 +363,8 @@ async function getCurrentDatasetState(client: DbClient): Promise<{ hash: string;
   };
 }
 
-async function getLiveCounts(client: DbClient): Promise<DatasetCounts> {
-  const result = await client.query(`
+async function getLiveCounts(dbPool: NonNullable<typeof pool>): Promise<DatasetCounts> {
+  const result = await dbPool.query(`
     SELECT
       (SELECT COUNT(*)::int FROM network_provider_snapshot) AS providers,
       (SELECT COUNT(*)::int FROM network_pricing_snapshot) AS pricing,
@@ -305,15 +382,13 @@ function countsEqual(left: DatasetCounts, right: DatasetCounts): boolean {
   return left.providers === right.providers && left.pricing === right.pricing && left.availability === right.availability;
 }
 
-async function createStagingTables(client: DbClient): Promise<void> {
-  await client.query(`
-    CREATE TEMP TABLE network_provider_stage AS SELECT * FROM network_provider_snapshot WITH NO DATA;
-    CREATE TEMP TABLE network_pricing_stage AS SELECT * FROM network_pricing_snapshot WITH NO DATA;
-    CREATE TEMP TABLE network_availability_stage AS SELECT * FROM network_availability_snapshot WITH NO DATA;
-  `);
+async function cleanupRun(dbPool: NonNullable<typeof pool>, runId: string): Promise<void> {
+  await dbPool.query(`DELETE FROM network_provider_stage WHERE run_id = $1`, [runId]);
+  await dbPool.query(`DELETE FROM network_pricing_stage WHERE run_id = $1`, [runId]);
+  await dbPool.query(`DELETE FROM network_availability_stage WHERE run_id = $1`, [runId]);
 }
 
-async function stageProviders(client: DbClient, records: NetworkRecord[]): Promise<void> {
+async function stageProviders(dbPool: NonNullable<typeof pool>, runId: string, records: NetworkRecord[]): Promise<void> {
   for (let start = 0; start < records.length; start += PROVIDER_BATCH_SIZE) {
     const batch = records.slice(start, start + PROVIDER_BATCH_SIZE).map((record) => ({
       external_id: record.externalId,
@@ -341,15 +416,15 @@ async function stageProviders(client: DbClient, records: NetworkRecord[]): Promi
       source_status: record.sourceStatus,
     }));
 
-    await client.query(
+    await dbPool.query(
       `INSERT INTO network_provider_stage (
-        external_id, name, organization_name, site_name, facility_type, network_status, visible,
+        run_id, external_id, name, organization_name, site_name, facility_type, network_status, visible,
         country, state_region, city, address1, address2, postal_code, latitude, longitude, phone,
         services, last_appointment, pricing_available, agreement_component_ids, service_component_ids,
         activity_2026, source_status
       )
       SELECT
-        x.external_id, x.name, x.organization_name, x.site_name, x.facility_type, x.network_status, x.visible,
+        $2::text, x.external_id, x.name, x.organization_name, x.site_name, x.facility_type, x.network_status, x.visible,
         x.country, x.state_region, x.city, x.address1, x.address2, x.postal_code, x.latitude, x.longitude, x.phone,
         x.services, x.last_appointment, x.pricing_available, x.agreement_component_ids, x.service_component_ids,
         x.activity_2026, x.source_status
@@ -360,12 +435,12 @@ async function stageProviders(client: DbClient, records: NetworkRecord[]): Promi
         services JSONB, last_appointment TEXT, pricing_available BOOLEAN, agreement_component_ids TEXT,
         service_component_ids TEXT, activity_2026 TEXT, source_status TEXT
       )`,
-      [JSON.stringify(batch)],
+      [JSON.stringify(batch), runId],
     );
   }
 }
 
-async function stagePricing(client: DbClient, aux: AuxSnapshot): Promise<number> {
+async function stagePricing(dbPool: NonNullable<typeof pool>, runId: string, aux: AuxSnapshot): Promise<number> {
   let staged = 0;
   for (let start = 0; start < aux.prices.length; start += INTELLIGENCE_BATCH_SIZE) {
     const batch = aux.prices.slice(start, start + INTELLIGENCE_BATCH_SIZE).map((record) => {
@@ -380,17 +455,17 @@ async function stagePricing(client: DbClient, aux: AuxSnapshot): Promise<number>
         expiration_date: clean(record[5], 80),
         line_item_created: clean(record[6], 80),
       };
-    }).filter((row) => row.component_name);
+    });
 
     if (!batch.length) continue;
-    await client.query(
+    await dbPool.query(
       `INSERT INTO network_pricing_stage (
-        canonical_external_id, network_name, site_name, address1, address2, city, state_region,
+        run_id, canonical_external_id, network_name, site_name, address1, address2, city, state_region,
         postal_code, phone, country, provider_type, component_name, numeric_price, source_price_text,
         effective_date, expiration_date, line_item_created
       )
       SELECT
-        x.canonical_external_id, x.network_name, x.site_name, x.address1, x.address2, x.city, x.state_region,
+        $2::text, x.canonical_external_id, x.network_name, x.site_name, x.address1, x.address2, x.city, x.state_region,
         x.postal_code, x.phone, x.country, x.provider_type, x.component_name, x.numeric_price, x.source_price_text,
         x.effective_date, x.expiration_date, x.line_item_created
       FROM jsonb_to_recordset($1::jsonb) AS x(
@@ -399,14 +474,14 @@ async function stagePricing(client: DbClient, aux: AuxSnapshot): Promise<number>
         component_name TEXT, numeric_price DOUBLE PRECISION, source_price_text TEXT, effective_date TEXT,
         expiration_date TEXT, line_item_created TEXT
       )`,
-      [JSON.stringify(batch)],
+      [JSON.stringify(batch), runId],
     );
     staged += batch.length;
   }
   return staged;
 }
 
-async function stageAvailability(client: DbClient, aux: AuxSnapshot): Promise<number> {
+async function stageAvailability(dbPool: NonNullable<typeof pool>, runId: string, aux: AuxSnapshot): Promise<number> {
   let staged = 0;
   for (let start = 0; start < aux.availability.length; start += INTELLIGENCE_BATCH_SIZE) {
     const batch = aux.availability.slice(start, start + INTELLIGENCE_BATCH_SIZE).map((record) => {
@@ -421,33 +496,34 @@ async function stageAvailability(client: DbClient, aux: AuxSnapshot): Promise<nu
     }).filter((row) => row.component_name);
 
     if (!batch.length) continue;
-    await client.query(
+    await dbPool.query(
       `INSERT INTO network_availability_stage (
-        canonical_external_id, network_name, site_name, address1, address2, city, state_region,
+        run_id, canonical_external_id, network_name, site_name, address1, address2, city, state_region,
         postal_code, phone, country, provider_type, component_name, component_type
       )
       SELECT
-        x.canonical_external_id, x.network_name, x.site_name, x.address1, x.address2, x.city, x.state_region,
+        $2::text, x.canonical_external_id, x.network_name, x.site_name, x.address1, x.address2, x.city, x.state_region,
         x.postal_code, x.phone, x.country, x.provider_type, x.component_name, x.component_type
       FROM jsonb_to_recordset($1::jsonb) AS x(
         canonical_external_id INTEGER, network_name TEXT, site_name TEXT, address1 TEXT, address2 TEXT,
         city TEXT, state_region TEXT, postal_code TEXT, phone TEXT, country TEXT, provider_type TEXT,
         component_name TEXT, component_type TEXT
       )`,
-      [JSON.stringify(batch)],
+      [JSON.stringify(batch), runId],
     );
     staged += batch.length;
   }
   return staged;
 }
 
-async function validateStagingCounts(client: DbClient, expected: DatasetCounts): Promise<void> {
-  const result = await client.query(`
-    SELECT
-      (SELECT COUNT(*)::int FROM network_provider_stage) AS providers,
-      (SELECT COUNT(*)::int FROM network_pricing_stage) AS pricing,
-      (SELECT COUNT(*)::int FROM network_availability_stage) AS availability
-  `);
+async function validateStagingCounts(dbPool: NonNullable<typeof pool>, runId: string, expected: DatasetCounts): Promise<void> {
+  const result = await dbPool.query(
+    `SELECT
+      (SELECT COUNT(*)::int FROM network_provider_stage WHERE run_id = $1) AS providers,
+      (SELECT COUNT(*)::int FROM network_pricing_stage WHERE run_id = $1) AS pricing,
+      (SELECT COUNT(*)::int FROM network_availability_stage WHERE run_id = $1) AS availability`,
+    [runId],
+  );
   const row = result.rows[0] || {};
   const actual: DatasetCounts = {
     providers: Number(row.providers) || 0,
@@ -460,56 +536,101 @@ async function validateStagingCounts(client: DbClient, expected: DatasetCounts):
   }
 }
 
-async function publishStagedDataset(client: DbClient, sourceHash: string, counts: DatasetCounts): Promise<void> {
-  await client.query(`TRUNCATE network_provider_snapshot, network_pricing_snapshot, network_availability_snapshot RESTART IDENTITY`);
+async function publishStagedDataset(
+  dbPool: NonNullable<typeof pool>,
+  runId: string,
+  sourceHash: string,
+  counts: DatasetCounts,
+): Promise<void> {
+  const client = await dbPool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtext($1)::bigint)", [DATASET_KEY]);
 
-  await client.query(`
-    INSERT INTO network_provider_snapshot (
-      external_id, name, organization_name, site_name, facility_type, network_status, visible,
-      country, state_region, city, address1, address2, postal_code, latitude, longitude, phone,
-      services, last_appointment, pricing_available, agreement_component_ids, service_component_ids,
-      activity_2026, source_status
-    )
-    SELECT
-      external_id, name, organization_name, site_name, facility_type, network_status, visible,
-      country, state_region, city, address1, address2, postal_code, latitude, longitude, phone,
-      services, last_appointment, pricing_available, agreement_component_ids, service_component_ids,
-      activity_2026, source_status
-    FROM network_provider_stage;
+    const current = await client.query(
+      `SELECT source_sha256, provider_count, pricing_count, availability_count
+       FROM network_dataset_state WHERE dataset_key = $1`,
+      [DATASET_KEY],
+    );
+    const currentRow = current.rows[0];
+    if (
+      currentRow &&
+      String(currentRow.source_sha256) === sourceHash &&
+      Number(currentRow.provider_count) === counts.providers &&
+      Number(currentRow.pricing_count) === counts.pricing &&
+      Number(currentRow.availability_count) === counts.availability
+    ) {
+      await client.query("COMMIT");
+      return;
+    }
 
-    INSERT INTO network_pricing_snapshot (
-      canonical_external_id, network_name, site_name, address1, address2, city, state_region,
-      postal_code, phone, country, provider_type, component_name, numeric_price, source_price_text,
-      effective_date, expiration_date, line_item_created
-    )
-    SELECT
-      canonical_external_id, network_name, site_name, address1, address2, city, state_region,
-      postal_code, phone, country, provider_type, component_name, numeric_price, source_price_text,
-      effective_date, expiration_date, line_item_created
-    FROM network_pricing_stage;
+    await client.query(`TRUNCATE network_provider_snapshot, network_pricing_snapshot, network_availability_snapshot RESTART IDENTITY`);
 
-    INSERT INTO network_availability_snapshot (
-      canonical_external_id, network_name, site_name, address1, address2, city, state_region,
-      postal_code, phone, country, provider_type, component_name, component_type
-    )
-    SELECT
-      canonical_external_id, network_name, site_name, address1, address2, city, state_region,
-      postal_code, phone, country, provider_type, component_name, component_type
-    FROM network_availability_stage;
-  `);
+    await client.query(
+      `INSERT INTO network_provider_snapshot (
+        external_id, name, organization_name, site_name, facility_type, network_status, visible,
+        country, state_region, city, address1, address2, postal_code, latitude, longitude, phone,
+        services, last_appointment, pricing_available, agreement_component_ids, service_component_ids,
+        activity_2026, source_status
+      )
+      SELECT
+        external_id, name, organization_name, site_name, facility_type, network_status, visible,
+        country, state_region, city, address1, address2, postal_code, latitude, longitude, phone,
+        services, last_appointment, pricing_available, agreement_component_ids, service_component_ids,
+        activity_2026, source_status
+      FROM network_provider_stage
+      WHERE run_id = $1`,
+      [runId],
+    );
 
-  await client.query(
-    `INSERT INTO network_dataset_state (
-       dataset_key, source_sha256, provider_count, pricing_count, availability_count, loaded_at
-     ) VALUES ($1, $2, $3, $4, $5, NOW())
-     ON CONFLICT (dataset_key) DO UPDATE SET
-       source_sha256 = EXCLUDED.source_sha256,
-       provider_count = EXCLUDED.provider_count,
-       pricing_count = EXCLUDED.pricing_count,
-       availability_count = EXCLUDED.availability_count,
-       loaded_at = NOW()`,
-    [DATASET_KEY, sourceHash, counts.providers, counts.pricing, counts.availability],
-  );
+    await client.query(
+      `INSERT INTO network_pricing_snapshot (
+        canonical_external_id, network_name, site_name, address1, address2, city, state_region,
+        postal_code, phone, country, provider_type, component_name, numeric_price, source_price_text,
+        effective_date, expiration_date, line_item_created
+      )
+      SELECT
+        canonical_external_id, network_name, site_name, address1, address2, city, state_region,
+        postal_code, phone, country, provider_type, component_name, numeric_price, source_price_text,
+        effective_date, expiration_date, line_item_created
+      FROM network_pricing_stage
+      WHERE run_id = $1`,
+      [runId],
+    );
+
+    await client.query(
+      `INSERT INTO network_availability_snapshot (
+        canonical_external_id, network_name, site_name, address1, address2, city, state_region,
+        postal_code, phone, country, provider_type, component_name, component_type
+      )
+      SELECT
+        canonical_external_id, network_name, site_name, address1, address2, city, state_region,
+        postal_code, phone, country, provider_type, component_name, component_type
+      FROM network_availability_stage
+      WHERE run_id = $1`,
+      [runId],
+    );
+
+    await client.query(
+      `INSERT INTO network_dataset_state (
+         dataset_key, source_sha256, provider_count, pricing_count, availability_count, loaded_at
+       ) VALUES ($1, $2, $3, $4, $5, NOW())
+       ON CONFLICT (dataset_key) DO UPDATE SET
+         source_sha256 = EXCLUDED.source_sha256,
+         provider_count = EXCLUDED.provider_count,
+         pricing_count = EXCLUDED.pricing_count,
+         availability_count = EXCLUDED.availability_count,
+         loaded_at = NOW()`,
+      [DATASET_KEY, sourceHash, counts.providers, counts.pricing, counts.availability],
+    );
+
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function bootstrapNetworkData(): Promise<void> {
@@ -520,35 +641,33 @@ export async function bootstrapNetworkData(): Promise<void> {
     return;
   }
 
+  const dbPool = pool;
   const datasetPath = resolveBundledDatasetPath();
   const fileBuffer = fs.readFileSync(datasetPath);
   const sourceHash = createHash("sha256").update(fileBuffer).digest("hex");
-  const client = await pool.connect();
+
+  await ensureTables(dbPool);
+
+  const existingState = await getCurrentDatasetState(dbPool);
+  if (existingState?.hash === sourceHash) {
+    const liveCounts = await getLiveCounts(dbPool);
+    if (countsEqual(liveCounts, existingState.counts)) {
+      logger.info({ datasetPath, sourceHash, ...liveCounts }, "Bundled Command Center dataset already current in Neon");
+      return;
+    }
+    logger.warn({ expected: existingState.counts, actual: liveCounts }, "Neon dataset counts do not match recorded state; rebuilding from bundled snapshot");
+  }
+
+  const html = fileBuffer.toString("utf8");
+  const providers = decodeProviderRecords(html);
+  const aux = decodeAuxSnapshot(html);
+  const runId = randomUUID();
 
   try {
-    await client.query("BEGIN");
-    await client.query("SELECT pg_advisory_xact_lock(hashtext($1)::bigint)", [DATASET_KEY]);
-    await ensureLiveTables(client);
-
-    const existingState = await getCurrentDatasetState(client);
-    if (existingState?.hash === sourceHash) {
-      const liveCounts = await getLiveCounts(client);
-      if (countsEqual(liveCounts, existingState.counts)) {
-        await client.query("COMMIT");
-        logger.info({ datasetPath, sourceHash, ...liveCounts }, "Bundled Command Center dataset already current in Neon");
-        return;
-      }
-      logger.warn({ expected: existingState.counts, actual: liveCounts }, "Neon dataset counts do not match recorded state; rebuilding from bundled snapshot");
-    }
-
-    const html = fileBuffer.toString("utf8");
-    const providers = decodeProviderRecords(html);
-    const aux = decodeAuxSnapshot(html);
-
-    await createStagingTables(client);
-    await stageProviders(client, providers);
-    const pricingCount = await stagePricing(client, aux);
-    const availabilityCount = await stageAvailability(client, aux);
+    await cleanupRun(dbPool, runId);
+    await stageProviders(dbPool, runId, providers);
+    const pricingCount = await stagePricing(dbPool, runId, aux);
+    const availabilityCount = await stageAvailability(dbPool, runId, aux);
 
     const expectedCounts: DatasetCounts = {
       providers: providers.length,
@@ -563,15 +682,18 @@ export async function bootstrapNetworkData(): Promise<void> {
       throw new Error(`Availability dataset validation failed: expected ${aux.availability.length.toLocaleString()} rows, staged ${availabilityCount.toLocaleString()}.`);
     }
 
-    await validateStagingCounts(client, expectedCounts);
-    await publishStagedDataset(client, sourceHash, expectedCounts);
-    await client.query("COMMIT");
+    await validateStagingCounts(dbPool, runId, expectedCounts);
+    await publishStagedDataset(dbPool, runId, sourceHash, expectedCounts);
 
-    logger.info({ datasetPath, sourceHash, ...expectedCounts }, "Bundled Command Center dataset loaded into Neon");
-  } catch (error) {
-    await client.query("ROLLBACK").catch(() => undefined);
-    throw error;
+    const liveCounts = await getLiveCounts(dbPool);
+    if (!countsEqual(liveCounts, expectedCounts)) {
+      throw new Error(`Published dataset validation failed. Expected ${JSON.stringify(expectedCounts)}, got ${JSON.stringify(liveCounts)}.`);
+    }
+
+    logger.info({ datasetPath, sourceHash, runId, ...expectedCounts }, "Bundled Command Center dataset loaded into Neon");
   } finally {
-    client.release();
+    await cleanupRun(dbPool, runId).catch((error: unknown) => {
+      logger.warn({ error, runId }, "Could not clean network bootstrap staging rows");
+    });
   }
 }
