@@ -1,0 +1,307 @@
+/* Global visual palette requested for every Portal 5 workspace.
+   #FFFEFE → #EEF2F6 → #B6C7D6 → #4B6F93 → #1E2A3A */
+
+:root {
+  --om-white: #FFFEFE;
+  --om-mist: #EEF2F6;
+  --om-silver-blue: #B6C7D6;
+  --om-steel: #4B6F93;
+  --om-navy: #1E2A3A;
+
+  --background: 214 32% 17%;
+  --foreground: 210 31% 96%;
+  --border: 210 26% 37%;
+  --card: 214 29% 21%;
+  --card-foreground: 210 31% 96%;
+  --card-border: rgba(182,199,214,.24);
+  --popover: 214 29% 20%;
+  --popover-foreground: 210 31% 96%;
+  --popover-border: rgba(182,199,214,.28);
+  --primary: 210 32% 44%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 211 27% 27%;
+  --secondary-foreground: 210 31% 96%;
+  --muted: 211 25% 24%;
+  --muted-foreground: 208 29% 78%;
+  --accent: 210 32% 44%;
+  --accent-foreground: 0 0% 100%;
+  --input: 211 27% 27%;
+  --ring: 210 32% 44%;
+  --sidebar: 214 32% 17%;
+  --sidebar-foreground: 210 31% 96%;
+  --sidebar-border: 210 26% 37%;
+  --sidebar-primary: 210 32% 44%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 211 27% 27%;
+  --sidebar-accent-foreground: 210 31% 96%;
+  --sidebar-ring: 210 32% 44%;
+  --chart-1: 210 32% 44%;
+  --chart-2: 208 29% 78%;
+  --chart-3: 211 27% 27%;
+  --chart-4: 210 31% 95%;
+  --chart-5: 214 32% 17%;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--om-navy) !important;
+  background-image:
+    radial-gradient(ellipse at 13% 6%, rgba(255,254,254,.15) 0%, transparent 31%),
+    radial-gradient(ellipse at 78% 12%, rgba(182,199,214,.22) 0%, transparent 38%),
+    radial-gradient(ellipse at 42% 74%, rgba(75,111,147,.36) 0%, transparent 52%),
+    linear-gradient(135deg, #1E2A3A 0%, #2B4055 30%, #4B6F93 58%, #718DA7 78%, #B6C7D6 100%) !important;
+  background-attachment: fixed !important;
+}
+
+/* Shared glass surfaces across Search, Bookmarks, History, Diagnostics and shell. */
+.glass-panel {
+  background: linear-gradient(145deg, rgba(30,42,58,.86), rgba(75,111,147,.34)) !important;
+  border-color: rgba(182,199,214,.25) !important;
+  box-shadow:
+    0 14px 38px rgba(14,23,34,.34),
+    inset 0 1px 0 rgba(255,254,254,.10),
+    inset 0 0 0 1px rgba(238,242,246,.03) !important;
+}
+
+.glass-panel:hover {
+  border-color: rgba(182,199,214,.43) !important;
+  box-shadow:
+    0 18px 46px rgba(14,23,34,.40),
+    0 0 0 1px rgba(75,111,147,.18),
+    inset 0 1px 0 rgba(255,254,254,.12) !important;
+}
+
+.glass-button {
+  background: rgba(238,242,246,.08) !important;
+  border-color: rgba(182,199,214,.24) !important;
+}
+.glass-button:hover {
+  background: rgba(182,199,214,.15) !important;
+  border-color: rgba(238,242,246,.36) !important;
+}
+
+.glow-primary {
+  box-shadow: 0 0 22px rgba(75,111,147,.48), 0 0 58px rgba(182,199,214,.20) !important;
+}
+
+.hub-card {
+  background: linear-gradient(145deg, rgba(75,111,147,.54), rgba(30,42,58,.94)) !important;
+  border-color: rgba(182,199,214,.24) !important;
+}
+.hub-card:hover {
+  border-color: rgba(238,242,246,.38) !important;
+  box-shadow: 0 16px 48px rgba(14,23,34,.48), 0 0 32px rgba(75,111,147,.24), inset 0 1px 0 rgba(255,254,254,.12) !important;
+}
+
+/* Remove purple/violet remnants from Search and any legacy cards. */
+[class*="text-violet"], [class*="text-purple"] { color: #B6C7D6 !important; }
+[class*="bg-violet"], [class*="bg-purple"] { background-color: rgba(75,111,147,.24) !important; }
+[class*="border-violet"], [class*="border-purple"] { border-color: rgba(182,199,214,.30) !important; }
+[class*="ring-violet"], [class*="ring-purple"] { --tw-ring-color: rgba(182,199,214,.30) !important; }
+[class*="shadow-violet"], [class*="shadow-purple"] { --tw-shadow-color: rgba(30,42,58,.38) !important; }
+
+/* Search page inline surfaces and headline gradient. These selectors intentionally
+   override the previous purple inline styles without changing page behavior. */
+[style*="rgba(18, 8, 36"],
+[style*="rgba(18,8,36"],
+[style*="rgba(18, 6, 36"],
+[style*="rgba(18,6,36"],
+[style*="rgba(22, 8, 42"],
+[style*="rgba(22,8,42"] {
+  background: linear-gradient(145deg, rgba(30,42,58,.90), rgba(75,111,147,.48)) !important;
+  border-color: rgba(182,199,214,.26) !important;
+}
+
+h1[style*="linear-gradient"],
+h2[style*="linear-gradient"] {
+  background-image: linear-gradient(115deg, #FFFEFE 0%, #EEF2F6 24%, #B6C7D6 53%, #4B6F93 77%, #EEF2F6 100%) !important;
+}
+
+option.bg-\[\#16082a\], option[class*="bg-[#16082a]"] {
+  background: #1E2A3A !important;
+  color: #EEF2F6 !important;
+}
+
+/* Generic page washes used by Bookmarks, History and Diagnostics. */
+.bg-muted\/5 {
+  background: linear-gradient(150deg, rgba(30,42,58,.18), rgba(75,111,147,.12), rgba(182,199,214,.08)) !important;
+}
+
+/* Header and navigation active states. */
+header.glass-panel {
+  background: linear-gradient(90deg, rgba(30,42,58,.96), rgba(45,64,85,.93), rgba(75,111,147,.84)) !important;
+  border-bottom-color: rgba(182,199,214,.24) !important;
+}
+header a[class*="text-primary"], header svg.text-primary { color: #B6C7D6 !important; }
+header a[class*="bg-black/40"], header a[class*="bg-white/60"] {
+  background: rgba(238,242,246,.11) !important;
+  color: #FFFEFE !important;
+  box-shadow: inset 0 0 0 1px rgba(182,199,214,.24) !important;
+}
+
+/* Command Center: exact requested five-color system across every analytical tab. */
+.ccf-page {
+  --ink: #1E2A3A !important;
+  --muted: #4B6F93 !important;
+  --blue: #4B6F93 !important;
+  --line: rgba(255,254,254,.92) !important;
+  --glass: rgba(238,242,246,.76) !important;
+  color: #1E2A3A !important;
+  background:
+    radial-gradient(circle at 7% 1%, rgba(255,254,254,.92), transparent 24%),
+    radial-gradient(circle at 80% 8%, rgba(182,199,214,.48), transparent 34%),
+    linear-gradient(135deg, #FFFEFE 0%, #EEF2F6 33%, #B6C7D6 62%, #4B6F93 84%, #1E2A3A 118%) !important;
+}
+
+.ccf-glass {
+  background: linear-gradient(145deg, rgba(255,254,254,.82), rgba(238,242,246,.68)) !important;
+  border-color: rgba(255,254,254,.94) !important;
+  box-shadow: 0 16px 42px rgba(30,42,58,.16), inset 0 1px 0 rgba(255,254,254,.80) !important;
+}
+
+.ccf-brand,
+.ccf-field input,
+.ccf-field select,
+.ccf-search,
+.ccf-chip,
+.ccf-clear,
+.ccf-mini div,
+.ccf-kpi,
+.ccf-tabs button.on,
+.ccf-work,
+.ccf-soft,
+.ccf-export,
+.ccf-group,
+.ccf-group-head,
+.ccf-card,
+.ccf-detail-hero,
+.ccf-detail-card,
+.ccf-analysis-head input,
+.ccf-analysis-head select,
+.ccf-panel,
+.ccf-filters input,
+.ccf-filters select,
+.ccf-tablebox {
+  border-color: rgba(255,254,254,.92) !important;
+}
+
+.ccf-brand,
+.ccf-field input,
+.ccf-field select,
+.ccf-search,
+.ccf-chip,
+.ccf-clear,
+.ccf-mini div,
+.ccf-kpi,
+.ccf-soft,
+.ccf-export,
+.ccf-detail-hero,
+.ccf-detail-card,
+.ccf-analysis-head input,
+.ccf-analysis-head select,
+.ccf-panel,
+.ccf-filters input,
+.ccf-filters select {
+  background: rgba(255,254,254,.70) !important;
+  color: #1E2A3A !important;
+}
+
+.ccf-work,
+.ccf-group,
+.ccf-tablebox {
+  background: rgba(238,242,246,.64) !important;
+}
+.ccf-group-head,
+.ccf-table th {
+  background: rgba(238,242,246,.94) !important;
+  color: #1E2A3A !important;
+}
+.ccf-card {
+  background: linear-gradient(145deg, rgba(255,254,254,.92), rgba(238,242,246,.80)) !important;
+  color: #1E2A3A !important;
+  box-shadow: 0 5px 15px rgba(30,42,58,.08) !important;
+}
+.ccf-card:hover {
+  box-shadow: 0 11px 24px rgba(30,42,58,.16) !important;
+}
+.ccf-card.on {
+  outline-color: rgba(75,111,147,.50) !important;
+  box-shadow: 0 0 0 3px rgba(182,199,214,.30), 0 11px 24px rgba(30,42,58,.15) !important;
+}
+.ccf-chip.on,
+.ccf-tabs button.on {
+  background: #B6C7D6 !important;
+  color: #1E2A3A !important;
+  border-color: rgba(75,111,147,.34) !important;
+}
+.ccf-mode button,
+.ccf-price { color: #4B6F93 !important; }
+.ccf-label,
+.ccf-note,
+.ccf-detail-card h4,
+.ccf-kv .k,
+.ccf-sub,
+.ccf-analysis-head p,
+.ccf-panel span,
+.ccf-loader,
+.ccf-empty { color: #4B6F93 !important; }
+.ccf-table th,
+.ccf-table td { border-bottom-color: rgba(75,111,147,.18) !important; }
+.ccf-source {
+  background: rgba(182,199,214,.30) !important;
+  border-color: rgba(75,111,147,.20) !important;
+  color: #1E2A3A !important;
+}
+
+/* Status chips stay distinguishable while remaining inside the requested palette. */
+.ccf-tag-active { color:#FFFEFE !important; background:#4B6F93 !important; border-color:#4B6F93 !important; }
+.ccf-tag-expired { color:#FFFEFE !important; background:#1E2A3A !important; border-color:#1E2A3A !important; }
+.ccf-tag-new { color:#1E2A3A !important; background:#B6C7D6 !important; border-color:#9FB4C6 !important; }
+.ccf-tag-unmatched { color:#1E2A3A !important; background:#EEF2F6 !important; border-color:#B6C7D6 !important; }
+
+/* Command Center MapTiler chrome; basemap itself remains cartographically legible. */
+.cc-map-layout { background: rgba(238,242,246,.58) !important; }
+.cc-map-side { background: rgba(238,242,246,.88) !important; border-left-color: rgba(75,111,147,.18) !important; }
+.cc-map-tools button,
+.cc-map-count,
+.cc-map-legend,
+.cc-map-list button {
+  background: rgba(255,254,254,.92) !important;
+  border-color: rgba(182,199,214,.55) !important;
+  color: #1E2A3A !important;
+  box-shadow: 0 7px 18px rgba(30,42,58,.14) !important;
+}
+.cc-map-tools button.on,
+.cc-map-popup-button {
+  background: #4B6F93 !important;
+  border-color: #4B6F93 !important;
+  color: #FFFEFE !important;
+}
+.cc-map-state {
+  background: rgba(238,242,246,.82) !important;
+  color: #1E2A3A !important;
+}
+.cc-map-popup { color: #1E2A3A !important; }
+.cc-map-popup-location { color: #4B6F93 !important; }
+
+/* Standard semantic UI elements throughout all tabs. */
+.text-primary { color: #B6C7D6 !important; }
+.bg-primary { background-color: #4B6F93 !important; }
+.border-primary { border-color: #4B6F93 !important; }
+.ring-primary { --tw-ring-color: rgba(75,111,147,.40) !important; }
+
+/* Keep destructive/warning/health semantics readable, but cool them toward the palette. */
+.text-slate-600, .dark\:text-slate-400 { color: #B6C7D6 !important; }
+.bg-slate-500\/10 { background-color: rgba(182,199,214,.10) !important; }
+.ring-slate-500\/20 { --tw-ring-color: rgba(182,199,214,.20) !important; }
+
+/* Scrollbars across every workspace. */
+* {
+  scrollbar-color: #4B6F93 rgba(30,42,58,.18);
+}
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: rgba(30,42,58,.12); }
+*::-webkit-scrollbar-thumb { background: linear-gradient(#B6C7D6, #4B6F93); border-radius: 999px; border: 2px solid rgba(30,42,58,.16); }
