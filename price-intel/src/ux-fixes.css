@@ -1,0 +1,53 @@
+/* Final usability pass after the blue palette migration. */
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Keep the Search hero readable across the full background gradient. */
+img[alt="Occu-Med"][style*="270px"] {
+  width: 230px !important;
+  margin-bottom: 0 !important;
+  filter: drop-shadow(0 0 20px rgba(255,254,254,.20)) drop-shadow(0 0 34px rgba(75,111,147,.20)) !important;
+}
+
+img[alt="Occu-Med"] + h1[style*="linear-gradient"] {
+  background-image: linear-gradient(110deg, #FFFEFE 0%, #EEF2F6 48%, #D7E1E9 72%, #B6C7D6 100%) !important;
+  filter: drop-shadow(0 8px 26px rgba(30,42,58,.18));
+}
+
+img[alt="Occu-Med"] + h1 + p {
+  color: rgba(238,242,246,.76) !important;
+}
+
+/* Remove the last dark-purple quick-search surfaces left behind by inline styles. */
+[style*="rgba(25,10,45"],
+[style*="rgba(25, 10, 45"] {
+  background: linear-gradient(145deg, rgba(30,42,58,.82), rgba(75,111,147,.48)) !important;
+  border-color: rgba(182,199,214,.28) !important;
+  box-shadow: 0 8px 20px rgba(30,42,58,.18) !important;
+}
+
+[style*="rgba(160,80,255"],
+[style*="rgba(160, 80, 255"] {
+  border-color: rgba(182,199,214,.30) !important;
+}
+
+/* Stronger information surfaces on the darker Search / saved-work pages. */
+.glass-panel {
+  backdrop-filter: blur(24px) saturate(125%);
+  -webkit-backdrop-filter: blur(24px) saturate(125%);
+}
+
+/* Keep the header compact even with the analytical workspace navigation. */
+header nav a {
+  flex: 0 0 auto;
+}
+
+/* Empty-state cards should not consume the entire viewport. */
+.bg-muted\/5 .glass-panel.max-w-3xl {
+  min-height: 280px;
+}
