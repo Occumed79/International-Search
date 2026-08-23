@@ -23,7 +23,13 @@ These rules are explicit user requirements for all future work on this repositor
 ## Frontend preservation
 
 - **Preserve the established frontend, visual identity, navigation shell, and interaction patterns unless the user explicitly requests a redesign.** Functional repurposing, new APIs, database changes, or new sourcing logic do not authorize a visual redesign.
-- Keep the existing Global Intelligence / Portal 5 shell and established page styling as the baseline. Add new capabilities inside that interface rather than replacing it with a new dashboard or command-center design.
+- Keep the existing Global Intelligence / Portal 5 shell and established page styling as the baseline. Add new capabilities inside that interface rather than replacing the application.
+- The HTML Command Center design is an approved **additive workspace** inside Portal 5. It may inform contained workspace styling and functionality, but it must not replace the existing provider-search experience.
+- Use the same Occu-Med wordmark/brand asset used by the Insight Hub landing page on the main provider-search hero.
+- **Do not add a portal switcher/drop-down menu to this app.** The header may link back to the Hub, but Portal 5 does not need to reproduce the Hub's portal selector.
+- **Do not expose backend implementation details, vendor/API names, fallback order, connector brands, database technology, or provider-routing logic in user-facing copy.** In particular, names such as Keenable, TinyFish, Exa, Serper, Neon, or similar infrastructure/vendor identifiers must remain backend-only unless the user explicitly asks to display them.
+- User-facing language should describe outcomes and functions: provider search, Occu-Med Network, additional providers, pricing, availability, agreements, services, search scope, and system health.
+- Diagnostics must sanitize connector/source labels rather than rendering raw backend connector or vendor names.
 - Do not rename the visible application, portal identity, primary navigation, or browser title as a side effect of backend or product-function changes unless the user explicitly requests those visible changes.
 
 ## Change discipline
