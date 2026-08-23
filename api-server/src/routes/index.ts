@@ -9,6 +9,7 @@ import networkIntelligenceRouter from "./networkIntelligence";
 import commandCenterRouter from "./commandCenter";
 import commandCenterDetailRouter from "./commandCenterDetail";
 import commandCenterV2Router from "./commandCenterV2";
+import outsideNetworkRouter from "./outsideNetwork";
 import configRouter from "./config";
 
 const router: IRouter = Router();
@@ -20,6 +21,7 @@ router.use(networkIntelligenceRouter);
 router.use(commandCenterRouter);
 router.use(commandCenterDetailRouter);
 router.use(commandCenterV2Router);
+router.use(outsideNetworkRouter);
 router.use(searchRouter);
 router.use(providersRouter);
 router.use(bookmarksRouter);
