@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Search, Bookmark, History, Shield, Globe, ArrowLeft, ChevronRight, Sparkles } from "lucide-react";
+import { Search, Bookmark, History, Shield, Globe, ArrowLeft, ChevronRight, Sparkles, LayoutDashboard } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem,
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -23,10 +23,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
 
   const navItems = [
-    { href: "/",          label: "Intelligence", icon: Search  },
-    { href: "/bookmarks", label: "Bookmarks",    icon: Bookmark },
-    { href: "/history",   label: "History",      icon: History  },
-    { href: "/admin",     label: "Diagnostics",  icon: Shield   },
+    { href: "/",               label: "Intelligence",   icon: Search },
+    { href: "/command-center", label: "Command Center", icon: LayoutDashboard },
+    { href: "/bookmarks",      label: "Bookmarks",      icon: Bookmark },
+    { href: "/history",        label: "History",        icon: History },
+    { href: "/admin",          label: "Diagnostics",    icon: Shield },
   ];
 
   return (
