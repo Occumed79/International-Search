@@ -6,10 +6,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import { Layout } from "@/components/layout";
 import { Home } from "@/pages/home";
-import { CommandCenterFull } from "@/pages/command-center-full";
+import { CommandCenterV2 } from "@/pages/command-center-v2";
 import { Bookmarks } from "@/pages/bookmarks";
 import { History } from "@/pages/history";
-import { Admin } from "@/pages/admin";
 
 const queryClient = new QueryClient();
 
@@ -28,13 +27,15 @@ function Router() {
     <Layout>
       <Switch>
         <Route path="/" component={Home} />
-        <Route path="/command-center" component={CommandCenterFull} />
+        <Route path="/command-center" component={CommandCenterV2} />
         <Route path="/search">
           <Redirect to="/" />
         </Route>
         <Route path="/bookmarks" component={Bookmarks} />
         <Route path="/history" component={History} />
-        <Route path="/admin" component={Admin} />
+        <Route path="/admin">
+          <Redirect to="/" />
+        </Route>
         <Route component={NotFound} />
       </Switch>
     </Layout>
