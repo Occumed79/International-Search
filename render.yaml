@@ -20,6 +20,8 @@ services:
         sync: false
       - key: EXA_API_KEY
         sync: false
+      - key: KEENABLE_API_KEY
+        sync: false
       - key: FIRECRAWL_API_KEY
         sync: false
       - key: GROQ_API_KEY
