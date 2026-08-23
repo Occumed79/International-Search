@@ -6,6 +6,10 @@ export function Admin() {
   const { data: diag, isLoading: isLoadingDiag } = useGetAdminDiagnostics({ query: { queryKey: ["/api/admin/diagnostics"] } });
   const { data: sources, isLoading: isLoadingSources } = useGetSourceBreakdown({ query: { queryKey: ["/api/stats/sources"] } });
 
+  const crawlSuccessRate = diag?.totalCrawls
+    ? ((diag.successfulCrawls / diag.totalCrawls) * 100).toFixed(1)
+    : "0.0";
+
   return (
     <div className="p-8 h-full overflow-auto bg-muted/5">
       <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-500">
@@ -42,7 +46,7 @@ export function Admin() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <MetricCard 
                 title="Crawl Success Rate" 
-                value={`${((diag.successfulCrawls / diag.totalCrawls) * 100).toFixed(1)}%`} 
+                value={`${crawlSuccessRate}%`} 
                 subValue={`${diag.totalCrawls.toLocaleString()} total runs`}
                 icon={Activity}
                 trend="good"
