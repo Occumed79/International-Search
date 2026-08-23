@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { bootstrapNetworkData } from "./services/networkBootstrapV2";
+import { bootstrapNetworkData } from "./services/networkBootstrapV3";
 
 const rawPort = process.env["PORT"];
 
