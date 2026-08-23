@@ -2,6 +2,7 @@ import {
   bigserial,
   boolean,
   doublePrecision,
+  index,
   integer,
   jsonb,
   pgTable,
@@ -35,7 +36,10 @@ export const networkProviderSnapshotTable = pgTable("network_provider_snapshot",
   activity2026: text("activity_2026"),
   sourceStatus: text("source_status"),
   importedAt: timestamp("imported_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  index("network_provider_snapshot_geo_idx").on(table.country, table.stateRegion, table.city),
+  index("network_provider_snapshot_status_idx").on(table.networkStatus),
+]);
 
 export const networkPricingSnapshotTable = pgTable("network_pricing_snapshot", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
@@ -57,7 +61,11 @@ export const networkPricingSnapshotTable = pgTable("network_pricing_snapshot", {
   expirationDate: text("expiration_date"),
   lineItemCreated: text("line_item_created"),
   importedAt: timestamp("imported_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  index("network_pricing_snapshot_external_idx").on(table.canonicalExternalId),
+  index("network_pricing_snapshot_geo_idx").on(table.country, table.stateRegion, table.city),
+  index("network_pricing_snapshot_component_idx").on(table.componentName),
+]);
 
 export const networkAvailabilitySnapshotTable = pgTable("network_availability_snapshot", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
@@ -75,7 +83,11 @@ export const networkAvailabilitySnapshotTable = pgTable("network_availability_sn
   componentName: text("component_name").notNull(),
   componentType: text("component_type"),
   importedAt: timestamp("imported_at", { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  index("network_availability_snapshot_external_idx").on(table.canonicalExternalId),
+  index("network_availability_snapshot_geo_idx").on(table.country, table.stateRegion, table.city),
+  index("network_availability_snapshot_component_idx").on(table.componentName),
+]);
 
 export const networkDatasetStateTable = pgTable("network_dataset_state", {
   datasetKey: text("dataset_key").primaryKey(),
