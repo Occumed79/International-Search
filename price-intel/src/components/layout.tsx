@@ -14,7 +14,7 @@ import {
   WalletCards,
 } from "lucide-react";
 
-const HUB_URL = (import.meta.env.VITE_HUB_URL as string | undefined) ?? "https://occu-med-insight-hub.onrender.com";
+const HUB_URL = (import.meta.env.VITE_HUB_URL as string | undefined) ?? "https://insight-hub2-0-fz26.onrender.com";
 
 const workspaceTabs = [
   { view: "map", label: "Map", icon: Map },
