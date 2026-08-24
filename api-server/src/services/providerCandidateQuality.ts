@@ -170,7 +170,7 @@ export function rankProviderCandidates(hits: ProviderHit[], params: MultiModePar
           // those fields when the source itself actually supports that geography.
           city: quality.cityVerified ? params.city : undefined,
           stateRegion: quality.stateVerified ? params.state : undefined,
-          country: quality.countryVerified ? params.country : undefined,
+          country: quality.countryVerified ? (params.country || "") : "",
           evidenceText: usefulEvidence(hit.evidenceText),
           confidenceScore: confidence,
         } satisfies ProviderHit,
