@@ -5,7 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import { Layout } from "@/components/layout";
-import { OutsideSearch } from "@/pages/outside-search";
+import { OutsideSearchV2 } from "@/pages/outside-search-v2";
 import { CommandCenterV2 } from "@/pages/command-center-v2";
 import { Bookmarks } from "@/pages/bookmarks";
 import { History } from "@/pages/history";
@@ -26,7 +26,7 @@ function Router() {
   return (
     <Layout>
       <Switch>
-        <Route path="/" component={OutsideSearch} />
+        <Route path="/" component={OutsideSearchV2} />
         <Route path="/command-center" component={CommandCenterV2} />
         <Route path="/search">
           <Redirect to="/" />
