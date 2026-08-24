@@ -16,6 +16,9 @@ These rules are explicit user requirements for all future work on this repositor
 - **Search means “show me what is not in our network.”** Search is an outside-network discovery / network-expansion workflow and must not return existing Occu-Med Directory providers as search results.
 - Outside-network Search must compare discovered candidates against the current Occu-Med provider Directory and exclude confirmed existing-network matches from its displayed results.
 - Do not add an `Occu-Med Network` result tab back to Search. Users who want existing-network providers should use Directory, Map, Coverage, Organizations, Pricing, Service Availability, Insights, or Coverage Gaps.
+- Outside-network Search must prioritize **actual provider entities**, not web pages. Reject or heavily down-rank listicles, directories, broad market pages, article pages, generic government information pages, and navigation/legal/about/contact pages when they cannot be resolved to a specific provider entity.
+- Multiple pages from the same clinic (for example About, Contact, Legal Notice, service pages) should resolve to **one canonical provider candidate**, not several result cards.
+- Search quality is more important than filling the page. Returning a smaller set of strong clinic candidates is preferable to showing weak directory/article results as providers.
 - Keep explicit service availability separate from pricing; do not infer service availability merely because a price exists.
 - Keenable and TinyFish are the primary outside-network discovery APIs.
 - Exa is fallback-only.
@@ -28,6 +31,7 @@ These rules are explicit user requirements for all future work on this repositor
 - Keep Global Intelligence as the visible application identity and add capabilities inside the same integrated interface rather than replacing the application.
 - **Use the approved global palette across every user-facing tab and workspace:** `#FFFEFE`, `#EEF2F6`, `#B6C7D6`, `#4B6F93`, and `#1E2A3A`. Do not reintroduce the prior purple/violet/maroon theme unless the user explicitly requests another palette.
 - Apply that palette consistently to Search, Map, Directory, Coverage, Organizations, Pricing, Service Availability, Insights, Coverage Gaps, provider cards, provider detail panels, Bookmarks, History, navigation, hover/active states, loading/empty states, tables, filters, and scrollbars.
+- **Exception for data visualization:** Map marker/data-series colors may use vivid categorical colors outside the five-color shell palette when needed for legibility and category separation. The surrounding UI must remain in the approved palette.
 - The HTML Command Center design remains an approved **additive analytical workspace** inside Global Intelligence, but it must not create a second navigation hierarchy inside the page.
 - **The global header is the workspace navigation.** Do not restore an internal Command Center tab strip or a generic `Command Center` header button. The top navigation should expose **Map, Directory, Coverage, Organizations, Pricing, Service Availability, Insights, and Coverage Gaps** as peer workspaces alongside Search, Bookmarks, and History.
 - **Map is the default analytical workspace.** Preserve the worldwide view when no meaningful provider/geography filter is active because the network is international.
@@ -36,6 +40,7 @@ These rules are explicit user requirements for all future work on this repositor
 - Preserve the provider filter system: network/name search, detail/location search, network status, visibility, 2026 activity, documented services with ANY/ALL matching, country, state/region, facility type, grouping, sorting, and filtered-network counts where relevant.
 - The map must use **MapTiler**, not Leaflet, and preserve **one physical clinic per point with no clustering/entity collapsing**.
 - Map points must use a visible glow treatment. The user must be able to control the map display by **agreement status, service category, and provider/facility type**, and choose how map points are colored.
+- Agreement-status marker colors must be visually distinct at a glance rather than constrained to near-identical shades of the application shell palette.
 - Clicking/selecting a map point must reveal useful clinic information. Do not show a redundant popup card plus the same clinic again in the side panel; the selected clinic should be represented once in the detail area and excluded from the repeated location list.
 - Filtered map searches must auto-fit to the filtered result geography; an organization filtered to South Africa, for example, must not remain centered on North America. The unfiltered state must retain the worldwide view.
 - Use the user-facing label **Service Availability**, not `Line Item Availability` or `Line Item Service Availability`.
@@ -44,8 +49,11 @@ These rules are explicit user requirements for all future work on this repositor
 - Coverage Gaps must specifically help identify U.S. network-presence gaps and strong-coverage areas across all 50 states and DC. Make clear when a metric describes network presence rather than population-adjusted market sufficiency.
 - Provider, pricing, availability, coverage, organization, map, and analytical views must use the **same active provider-filter context**. Do not show a sidebar filter for one organization while presenting unrelated pricing or service-availability records.
 - Distinguish filtered metrics from global metrics. Do not mix global KPI totals with filtered result tables in a way that implies they describe the same dataset.
-- Use the same Occu-Med wordmark/brand asset used by the Insight Hub landing page on the main provider-search hero.
+- Use the same Occu-Med wordmark/brand asset used by the Insight Hub landing page on the main provider-search hero. The Search hero logo must be visually centered and prominent rather than reduced to a small badge.
+- Keep `Providers Worldwide` together on the Search hero at normal desktop widths; do not let the phrase split into separate `Providers` and `Worldwide` lines.
+- Search-bar action buttons must fit inside the search frame without wrapping their labels.
 - **Do not add a portal switcher/drop-down menu to this app.** The header may link back to the Hub, but Global Intelligence does not need to reproduce the Hub's portal selector.
+- The Hub button must point to the current Occu-Med Insight Hub, not an obsolete International Search/price-search deployment.
 - Do not display `Portal 5` or similar internal portal numbering in normal user-facing navigation.
 - **Do not expose backend implementation details, vendor/API names, fallback order, connector brands, database technology, or provider-routing logic in user-facing copy.** In particular, names such as Keenable, TinyFish, Exa, Serper, Neon, or similar infrastructure/vendor identifiers must remain backend-only unless the user explicitly asks to display them.
 - User-facing language should describe outcomes and functions: outside-network provider search, Occu-Med Directory, pricing, availability, agreements, services, coverage, insights, and network gaps.
