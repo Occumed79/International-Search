@@ -14,7 +14,11 @@ import {
   WalletCards,
 } from "lucide-react";
 
-const HUB_URL = (import.meta.env.VITE_HUB_URL as string | undefined) ?? "https://insight-hub2-0-fz26.onrender.com";
+const CURRENT_HUB_URL = "https://insight-hub2-0-fz26.onrender.com";
+const configuredHubUrl = (import.meta.env.VITE_HUB_URL as string | undefined)?.trim();
+const HUB_URL = configuredHubUrl && !/(?:price-search-tool|international-search)/i.test(configuredHubUrl)
+  ? configuredHubUrl
+  : CURRENT_HUB_URL;
 
 const workspaceTabs = [
   { view: "map", label: "Map", icon: Map },
