@@ -29,7 +29,9 @@ interface Props {
 
 type ColorMode = "agreement" | "service" | "provider";
 
-const PALETTE = ["#4B6F93", "#B6C7D6", "#1E2A3A", "#EEF2F6", "#FFFEFE"];
+// The application shell keeps the approved blue/steel palette. Map markers use vivid analytical colors
+// so tens of thousands of provider points remain distinguishable against street and satellite basemaps.
+const DATA_PALETTE = ["#22D3EE", "#A78BFA", "#F59E0B", "#34D399", "#FB7185", "#60A5FA", "#F472B6", "#A3E635", "#F97316", "#2DD4BF"];
 const SERVICE_GROUPS = ["Medical / Physical", "Drug Testing", "Laboratory", "Dental", "Hearing", "Imaging", "Vaccinations", "Fit Test", "Other"];
 
 function serviceGroup(services: string[] = []) {
@@ -46,15 +48,15 @@ function serviceGroup(services: string[] = []) {
 }
 
 function agreementColor(status?: string | null) {
-  if (status === "Active Agreement") return "#4B6F93";
-  if (status === "Expired") return "#1E2A3A";
-  if (status?.includes("2026")) return "#B6C7D6";
-  return "#EEF2F6";
+  if (status === "Active Agreement") return "#22D3EE";
+  if (status === "Expired") return "#F59E0B";
+  if (status?.includes("2026")) return "#A78BFA";
+  return "#FB7185";
 }
 
 function indexedColor(value: string, universe: string[]) {
   const index = Math.max(0, universe.indexOf(value));
-  return PALETTE[index % PALETTE.length];
+  return DATA_PALETTE[index % DATA_PALETTE.length];
 }
 
 function hasMeaningfulQuery(filterQuery: string) {
@@ -223,10 +225,10 @@ export function CommandCenterMapV2({ filterQuery, selectedId, onSelect }: Props)
           type: "circle",
           source: "cc-provider-source",
           paint: {
-            "circle-radius": ["interpolate", ["linear"], ["zoom"], 1, 5, 5, 8, 10, 13],
+            "circle-radius": ["interpolate", ["linear"], ["zoom"], 1, 7, 5, 11, 10, 18],
             "circle-color": ["get", "color"],
-            "circle-opacity": 0.62,
-            "circle-blur": 0.8,
+            "circle-opacity": 0.72,
+            "circle-blur": 0.92,
           },
         } as any);
       }
@@ -236,11 +238,11 @@ export function CommandCenterMapV2({ filterQuery, selectedId, onSelect }: Props)
           type: "circle",
           source: "cc-provider-source",
           paint: {
-            "circle-radius": ["case", ["==", ["get", "selected"], 1], 6.2, ["interpolate", ["linear"], ["zoom"], 1, 2.4, 5, 3.2, 10, 5.2]],
+            "circle-radius": ["case", ["==", ["get", "selected"], 1], 7, ["interpolate", ["linear"], ["zoom"], 1, 2.9, 5, 3.8, 10, 5.8]],
             "circle-color": ["get", "color"],
-            "circle-stroke-width": ["case", ["==", ["get", "selected"], 1], 2.4, 0.9],
-            "circle-stroke-color": ["case", ["==", ["get", "selected"], 1], "#FFFEFE", "#1E2A3A"],
-            "circle-opacity": 0.96,
+            "circle-stroke-width": ["case", ["==", ["get", "selected"], 1], 3, 1.1],
+            "circle-stroke-color": "#FFFFFF",
+            "circle-opacity": 0.98,
           },
         } as any);
       }
@@ -270,10 +272,10 @@ export function CommandCenterMapV2({ filterQuery, selectedId, onSelect }: Props)
 
   const legend = colorMode === "agreement"
     ? [
-        ["Active Agreement", "#4B6F93"],
-        ["Expired", "#1E2A3A"],
-        ["No Agreement / Unmatched", "#EEF2F6"],
-        ["2026 New / Unreconciled", "#B6C7D6"],
+        ["Active Agreement", "#22D3EE"],
+        ["Expired", "#F59E0B"],
+        ["No Agreement / Unmatched", "#FB7185"],
+        ["2026 New / Unreconciled", "#A78BFA"],
       ]
     : colorMode === "service"
       ? SERVICE_GROUPS.slice(0, 8).map((label) => [label, indexedColor(label, serviceUniverse)])
@@ -288,7 +290,7 @@ export function CommandCenterMapV2({ filterQuery, selectedId, onSelect }: Props)
         .ccm2-seg{display:flex;gap:3px;padding:3px;background:rgba(255,254,254,.92);border:1px solid rgba(182,199,214,.72);border-radius:12px;box-shadow:0 8px 22px rgba(30,42,58,.16)}.ccm2-seg button{border:0;background:transparent;border-radius:9px;height:30px;padding:0 9px;color:#4B6F93;font-size:9px;font-weight:850;display:flex;align-items:center;gap:5px;cursor:pointer}.ccm2-seg button.on{background:#4B6F93;color:#FFFEFE}.ccm2-seg svg{width:12px;height:12px}
         .ccm2-select{height:36px;border:1px solid rgba(182,199,214,.72);border-radius:12px;background:rgba(255,254,254,.94);color:#1E2A3A;padding:0 9px;font-size:9px;font-weight:750;box-shadow:0 8px 22px rgba(30,42,58,.14);max-width:190px}
         .ccm2-count{margin-left:auto;background:rgba(255,254,254,.94);border:1px solid rgba(182,199,214,.72);border-radius:999px;padding:8px 11px;font-size:9px;font-weight:850;color:#1E2A3A;box-shadow:0 8px 22px rgba(30,42,58,.14)}
-        .ccm2-legend{position:absolute;z-index:5;left:12px;bottom:12px;max-width:245px;background:rgba(255,254,254,.94);border:1px solid rgba(182,199,214,.72);border-radius:15px;padding:10px 12px;box-shadow:0 9px 24px rgba(30,42,58,.16);font-size:8px;color:#1E2A3A}.ccm2-legend strong{font-size:8px;letter-spacing:.08em;text-transform:uppercase}.ccm2-legend-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px 9px;margin-top:7px}.ccm2-legend-row{display:flex;align-items:center;gap:5px;min-width:0}.ccm2-dot{width:7px;height:7px;border-radius:999px;box-shadow:0 0 8px currentColor;flex:none}.ccm2-legend-row span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .ccm2-legend{position:absolute;z-index:5;left:12px;bottom:12px;max-width:245px;background:rgba(255,254,254,.94);border:1px solid rgba(182,199,214,.72);border-radius:15px;padding:10px 12px;box-shadow:0 9px 24px rgba(30,42,58,.16);font-size:8px;color:#1E2A3A}.ccm2-legend strong{font-size:8px;letter-spacing:.08em;text-transform:uppercase}.ccm2-legend-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px 9px;margin-top:7px}.ccm2-legend-row{display:flex;align-items:center;gap:5px;min-width:0}.ccm2-dot{width:8px;height:8px;border-radius:999px;box-shadow:0 0 5px currentColor,0 0 13px currentColor,0 0 20px currentColor;flex:none}.ccm2-legend-row span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
         .ccm2-loading{position:absolute;z-index:7;left:50%;top:72px;transform:translateX(-50%);background:rgba(30,42,58,.9);color:#FFFEFE;border:1px solid rgba(182,199,214,.35);border-radius:999px;padding:8px 12px;font-size:9px;font-weight:800;box-shadow:0 8px 25px rgba(30,42,58,.28)}
         .ccm2-side{min-height:0;overflow:auto;border-left:1px solid rgba(75,111,147,.18);padding:12px;background:linear-gradient(180deg,rgba(238,242,246,.94),rgba(182,199,214,.58))}.ccm2-side h3{font-size:15px;margin:0}.ccm2-side p{font-size:9px;color:#4B6F93;line-height:1.4}.ccm2-selected{background:#FFFEFE;border:1px solid rgba(75,111,147,.28);border-radius:16px;padding:12px;box-shadow:0 10px 28px rgba(30,42,58,.12);margin-bottom:10px}.ccm2-selected h4{font-size:14px;margin:0;color:#1E2A3A}.ccm2-meta{font-size:9px;color:#4B6F93;margin-top:4px}.ccm2-badges{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}.ccm2-badge{font-size:7.5px;border-radius:999px;padding:4px 6px;background:#EEF2F6;color:#1E2A3A;border:1px solid #B6C7D6}.ccm2-list{display:grid;gap:6px}.ccm2-list button{width:100%;text-align:left;border:1px solid rgba(182,199,214,.66);background:rgba(255,254,254,.86);border-radius:13px;padding:9px;color:#1E2A3A;cursor:pointer}.ccm2-list button:hover{border-color:#4B6F93;box-shadow:0 7px 18px rgba(30,42,58,.10)}.ccm2-list b{display:block;font-size:10px}.ccm2-list span{display:block;margin-top:3px;font-size:8px;color:#4B6F93}
         @media(max-width:1000px){.ccm2-layout{grid-template-columns:1fr}.ccm2-side{display:none}.ccm2-controls{right:8px}.ccm2-count{display:none}}
