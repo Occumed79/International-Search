@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
 import { runApiProviderSearch } from "../services/apiProviderSearch";
+import { rankProviderCandidates } from "../services/providerCandidateQuality";
 import type { ProviderHit } from "../services/multiModeSearch";
 
 const router: IRouter = Router();
@@ -19,6 +20,20 @@ function normalizeCountry(value: unknown): string {
   const upper = raw.toUpperCase();
   if (["US", "USA", "UNITED STATES", "UNITED STATES OF AMERICA"].includes(upper)) return "United States";
   return raw;
+}
+
+function providerTypeLabel(value?: string): string {
+  const labels: Record<string, string> = {
+    occupational_health: "occupational health clinic",
+    clinic: "medical clinic",
+    hospital: "hospital",
+    urgent_care: "urgent care clinic",
+    imaging_center: "diagnostic imaging center",
+    lab: "medical laboratory",
+    dental: "dental clinic dentist",
+    pharmacy: "pharmacy",
+  };
+  return labels[value || ""] || "healthcare clinic";
 }
 
 function sameIdentity(candidate: ProviderHit, row: any): boolean {
@@ -52,6 +67,17 @@ async function loadNetworkIdentityRows(country: string, state: string, city: str
   return result.rows;
 }
 
+function mergeSourceCounts(
+  first: { keenable: number; tinyfish: number; exa: number },
+  second?: { keenable: number; tinyfish: number; exa: number },
+) {
+  return {
+    keenable: first.keenable + (second?.keenable || 0),
+    tinyfish: first.tinyfish + (second?.tinyfish || 0),
+    exa: first.exa + (second?.exa || 0),
+  };
+}
+
 router.post("/outside-network/search", async (req, res): Promise<void> => {
   try {
     const body = req.body && typeof req.body === "object" ? req.body : {};
@@ -65,35 +91,57 @@ router.post("/outside-network/search", async (req, res): Promise<void> => {
       ? body.services.map((item: unknown) => clean(item, 160)).filter(Boolean)
       : clean(body.services, 2000).split(/[|,;\n]+/).map((item) => item.trim()).filter(Boolean);
 
-    const discovery = await runApiProviderSearch({
+    const params = {
       query: [query, ...services].filter(Boolean).join(" "),
       providerType,
       country: country || undefined,
       state: state || undefined,
       city: city || undefined,
       radiusMiles,
-    });
+    };
+
+    const discovery = await runApiProviderSearch(params);
+    let rawHits = discovery.results;
+    let ranked = rankProviderCandidates(rawHits, params);
+    let refinement: Awaited<ReturnType<typeof runApiProviderSearch>> | null = null;
+
+    // When the first web pass is mostly directories/articles, spend one targeted pass on actual entity pages.
+    if (ranked.length < 6) {
+      refinement = await runApiProviderSearch({
+        ...params,
+        query: `${query} ${providerTypeLabel(providerType)} official website address phone appointments`,
+      });
+      rawHits = [...rawHits, ...refinement.results];
+      ranked = rankProviderCandidates(rawHits, params);
+    }
 
     const networkRows = await loadNetworkIdentityRows(country, state, city);
     const candidates: ProviderHit[] = [];
     const excludedExisting: ProviderHit[] = [];
 
-    for (const hit of discovery.results) {
-      if (networkRows.some((row) => sameIdentity(hit, row))) excludedExisting.push(hit);
-      else candidates.push(hit);
+    for (const hit of ranked) {
+      const normalizedHit: ProviderHit = {
+        ...hit,
+        specialty: query,
+        serviceQuery: query,
+      };
+      if (networkRows.some((row) => sameIdentity(normalizedHit, row))) excludedExisting.push(normalizedHit);
+      else candidates.push(normalizedHit);
     }
 
     res.json({
       requirement: { query, providerType, country, state, city, radiusMiles, services },
       summary: {
-        discovered: discovery.results.length,
+        discovered: rawHits.length,
+        rejectedLowQuality: Math.max(0, rawHits.length - ranked.length),
         excludedExisting: excludedExisting.length,
         outsideNetworkCandidates: candidates.length,
       },
       candidates,
-      // Kept backend-only for diagnostics/telemetry; the frontend does not render vendor identities.
-      sources: discovery.sources,
-      fallbackUsed: discovery.fallbackUsed,
+      // Backend-only telemetry. Vendor identities are not rendered in the frontend.
+      sources: mergeSourceCounts(discovery.sources, refinement?.sources),
+      fallbackUsed: discovery.fallbackUsed || Boolean(refinement?.fallbackUsed),
+      refinementUsed: Boolean(refinement),
     });
   } catch (error) {
     logger.error({ error }, "Outside-network provider search failed");
