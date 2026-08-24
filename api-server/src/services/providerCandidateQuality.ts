@@ -32,17 +32,12 @@ function canonicalName(value: unknown, sourceUrl?: string): string {
   let title = clean(value, 220);
   if (!title) return hostOf(sourceUrl).split(".")[0].replace(/[-_]+/g, " ");
 
-  // Breadcrumb titles usually put the actual facility first.
   if (title.includes(">")) title = title.split(/\s*>\s*/)[0] || title;
-
-  // Keep the provider name when a result is an About/Contact/Legal page for the provider.
   title = title.replace(GENERIC_PAGE_PREFIX, "").trim();
 
-  // Remove common site/domain suffixes while preserving useful location qualifiers.
   const segments = title.split(/\s+[|–—]\s+/).map((part) => part.trim()).filter(Boolean);
   if (segments.length > 1) title = segments[0];
 
-  // Hyphenated generic page labels should resolve to the provider name after the dash.
   const genericDash = title.match(/^(?:about(?: us)?|contact(?: us)?|legal notice|privacy(?: policy)?|home)\s*-\s*(.+)$/i);
   if (genericDash?.[1]) title = genericDash[1].trim();
 
@@ -70,17 +65,27 @@ function providerTypeRegex(providerType?: string): RegExp {
   }
 }
 
-function locationSignal(text: string, value?: string): number {
+function locationSignal(text: string, value?: string): boolean {
   const needle = normalized(value);
-  if (!needle) return 0;
-  return normalized(text).includes(needle) ? 1 : 0;
+  if (!needle) return false;
+  return normalized(text).includes(needle);
 }
 
-function qualityScore(hit: ProviderHit, params: MultiModeParams): { score: number; name: string; hardReject: boolean } {
+type QualityResult = {
+  score: number;
+  name: string;
+  hardReject: boolean;
+  cityVerified: boolean;
+  stateVerified: boolean;
+  countryVerified: boolean;
+};
+
+function qualityScore(hit: ProviderHit, params: MultiModeParams): QualityResult {
   const originalName = clean(hit.providerName, 220);
   const name = canonicalName(originalName, hit.sourceUrl || hit.website);
   const evidence = clean(hit.evidenceText, 2400);
-  const combined = `${name} ${originalName} ${evidence}`;
+  const source = clean(hit.sourceUrl || hit.website, 500);
+  const combined = `${name} ${originalName} ${evidence} ${source}`;
   let score = 0;
   let hardReject = false;
 
@@ -102,20 +107,24 @@ function qualityScore(hit: ProviderHit, params: MultiModeParams): { score: numbe
 
   if (hit.phone) score += 3;
   if (CONTACT_SIGNALS.test(evidence)) score += 2;
-  if (locationSignal(combined, params.city)) score += 3;
-  if (locationSignal(combined, params.state)) score += 1;
-  if (locationSignal(combined, params.country)) score += 1;
+
+  const cityVerified = locationSignal(combined, params.city);
+  const stateVerified = locationSignal(combined, params.state);
+  const countryVerified = locationSignal(combined, params.country);
+  if (cityVerified) score += 3;
+  else if (params.city) score -= 4;
+  if (stateVerified) score += 1;
+  if (countryVerified) score += 1;
 
   const host = hostOf(hit.sourceUrl || hit.website);
   if (host && !/(?:blog|news|directory|listing|magazine|tourism|linkedin|facebook|instagram)/i.test(host)) score += 1;
 
-  // Government or military facilities can still be valid providers, but only when the title itself is clearly a clinical entity.
   if (/\b(?:naval station|military onesource|tricare|department of defense|department of the navy)\b/i.test(combined)) {
     if (/(?:hospital|clinic|medical center|dental clinic)/i.test(name)) score += 1;
     else score -= 5;
   }
 
-  return { score, name, hardReject };
+  return { score, name, hardReject, cityVerified, stateVerified, countryVerified };
 }
 
 function usefulEvidence(value: unknown): string | undefined {
@@ -126,7 +135,6 @@ function usefulEvidence(value: unknown): string | undefined {
     .replace(/\s+/g, " ")
     .trim();
 
-  // Directory-statistics copy is not useful provider evidence.
   text = text.replace(/(?:There are|Of these locations).{0,450}$/i, "").trim();
   if (!text || text.length < 24) return undefined;
   return text.slice(0, 420);
@@ -158,6 +166,11 @@ export function rankProviderCandidates(hits: ProviderHit[], params: MultiModePar
           ...hit,
           providerName: quality.name,
           organizationName: quality.name,
+          // apiProviderSearch stamps the requested geography onto every raw web hit. Only keep
+          // those fields when the source itself actually supports that geography.
+          city: quality.cityVerified ? params.city : undefined,
+          stateRegion: quality.stateVerified ? params.state : undefined,
+          country: quality.countryVerified ? params.country : undefined,
           evidenceText: usefulEvidence(hit.evidenceText),
           confidenceScore: confidence,
         } satisfies ProviderHit,
