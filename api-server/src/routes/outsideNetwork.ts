@@ -118,8 +118,16 @@ router.post("/outside-network/search", async (req, res): Promise<void> => {
     const networkRows = await loadNetworkIdentityRows(country, state, city);
     const candidates: ProviderHit[] = [];
     const excludedExisting: ProviderHit[] = [];
+    let rejectedLocationMismatch = 0;
 
     for (const hit of ranked) {
+      // A city search must be supported by the source itself. Raw web results are not allowed to
+      // inherit the requested city merely because the query contained it.
+      if (city && !hit.city) {
+        rejectedLocationMismatch += 1;
+        continue;
+      }
+
       const normalizedHit: ProviderHit = {
         ...hit,
         specialty: query,
@@ -133,7 +141,7 @@ router.post("/outside-network/search", async (req, res): Promise<void> => {
       requirement: { query, providerType, country, state, city, radiusMiles, services },
       summary: {
         discovered: rawHits.length,
-        rejectedLowQuality: Math.max(0, rawHits.length - ranked.length),
+        rejectedLowQuality: Math.max(0, rawHits.length - ranked.length) + rejectedLocationMismatch,
         excludedExisting: excludedExisting.length,
         outsideNetworkCandidates: candidates.length,
       },
