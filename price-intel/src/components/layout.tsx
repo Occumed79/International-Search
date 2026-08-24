@@ -14,7 +14,7 @@ import {
   WalletCards,
 } from "lucide-react";
 
-const HUB_URL = (import.meta.env.VITE_HUB_URL as string | undefined) ?? "https://price-search-tool.onrender.com";
+const HUB_URL = (import.meta.env.VITE_HUB_URL as string | undefined) ?? "https://occu-med-insight-hub.onrender.com";
 
 const workspaceTabs = [
   { view: "map", label: "Map", icon: Map },
@@ -40,8 +40,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <div className="flex items-center gap-2 shrink-0">
           <a
             href={HUB_URL}
-            target="_blank"
-            rel="noopener noreferrer"
             className="flex items-center gap-1.5 h-8 px-2.5 rounded-xl text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-white/10 transition-all"
             title="Back to Occu-Med Hub"
           >
