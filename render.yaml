@@ -33,4 +33,4 @@ services:
       - key: JINA_API_KEY
         sync: false
       - key: VITE_HUB_URL
-        value: https://occu-med-insight-hub.onrender.com
+        value: https://insight-hub2-0-fz26.onrender.com
