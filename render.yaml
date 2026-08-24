@@ -33,4 +33,4 @@ services:
       - key: JINA_API_KEY
         sync: false
       - key: VITE_HUB_URL
-        value: https://price-search-tool.onrender.com
+        value: https://occu-med-insight-hub.onrender.com
