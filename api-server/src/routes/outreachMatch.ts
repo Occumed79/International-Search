@@ -14,7 +14,8 @@ type Candidate = {
 };
 
 type StoredProvider = {
-  id: number;
+  id: number | string;
+  source_table?: "providers" | "network_provider_snapshot";
   name: string;
   organization_name?: string | null;
   address?: string | null;
@@ -32,7 +33,7 @@ function normalized(value: unknown): string {
   return clean(value, 500)
     .toLowerCase()
     .normalize("NFKD")
-    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -127,23 +128,100 @@ router.post("/outreach-match", async (req, res): Promise<void> => {
     where.push(`country ILIKE ${add(country)}`);
     if (city) where.push(`city ILIKE ${add(`%${city}%`)}`);
 
+    const broadValues = [...values];
+    const broadWhere = [...where];
+
     const namePattern = `%${name}%`;
     const nameParam = add(namePattern);
     where.push(`(name ILIKE ${nameParam} OR organization_name ILIKE ${nameParam})`);
 
-    values.push(100);
-    const result = await pool.query(
+    const legacyResult = await pool.query(
       `
-        SELECT id, name, organization_name, address, city, country, phone, website
+        SELECT
+          id,
+          'providers'::text AS source_table,
+          name,
+          organization_name,
+          address,
+          city,
+          country,
+          phone,
+          website
         FROM providers
         WHERE ${where.join(" AND ")}
         ORDER BY last_updated DESC
-        LIMIT $${values.length}
+        LIMIT 150
       `,
       values
     );
 
-    const ranked = result.rows
+    let broadLegacyRows: StoredProvider[] = [];
+    if (legacyResult.rows.length < 10) {
+      broadValues.push(500);
+      const broadResult = await pool.query(
+        `
+          SELECT
+            id,
+            'providers'::text AS source_table,
+            name,
+            organization_name,
+            address,
+            city,
+            country,
+            phone,
+            website
+          FROM providers
+          WHERE ${broadWhere.join(" AND ")}
+          ORDER BY last_updated DESC
+          LIMIT $${broadValues.length}
+        `,
+        broadValues
+      );
+      broadLegacyRows = broadResult.rows as StoredProvider[];
+    }
+
+    let networkRows: StoredProvider[] = [];
+    try {
+      const networkValues: unknown[] = [country];
+      const networkWhere = ["country ILIKE $1"];
+      if (city) {
+        networkValues.push(`%${city}%`);
+        networkWhere.push(`city ILIKE $${networkValues.length}`);
+      }
+      networkValues.push(500);
+
+      const networkResult = await pool.query(
+        `
+          SELECT
+            id,
+            'network_provider_snapshot'::text AS source_table,
+            name,
+            organization_name,
+            address1 AS address,
+            city,
+            country,
+            phone,
+            NULL::text AS website
+          FROM network_provider_snapshot
+          WHERE ${networkWhere.join(" AND ")}
+          ORDER BY imported_at DESC
+          LIMIT $${networkValues.length}
+        `,
+        networkValues
+      );
+      networkRows = networkResult.rows as StoredProvider[];
+    } catch (error: any) {
+      if (error?.code !== "42P01") {
+        logger.warn({ error }, "Canonical network snapshot outreach lookup failed");
+      }
+    }
+
+    const candidateRows = [
+      ...(legacyResult.rows as StoredProvider[]),
+      ...broadLegacyRows,
+      ...networkRows,
+    ];
+    const ranked = candidateRows
       .map((row: StoredProvider) => ({ row, score: scoreOutreachMatch(body, row) }))
       .filter((entry) => entry.score > 0)
       .sort((a, b) => b.score - a.score);
@@ -153,7 +231,7 @@ router.post("/outreach-match", async (req, res): Promise<void> => {
       res.json({
         available: true,
         found: false,
-        checked: result.rows.length
+        checked: candidateRows.length
       });
       return;
     }
@@ -161,7 +239,7 @@ router.post("/outreach-match", async (req, res): Promise<void> => {
     res.json({
       available: true,
       found: true,
-      recordId: `provider-${best.row.id}`,
+      recordId: `${best.row.source_table || "provider"}-${best.row.id}`,
       label: best.row.name,
       confidence: best.score,
       match: best.row
