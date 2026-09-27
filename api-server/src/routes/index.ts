@@ -11,6 +11,7 @@ import commandCenterDetailRouter from "./commandCenterDetail";
 import commandCenterV2Router from "./commandCenterV2";
 import outsideNetworkRouter from "./outsideNetwork";
 import configRouter from "./config";
+import outreachMatchRouter from "./outreachMatch";
 
 const router: IRouter = Router();
 
@@ -22,6 +23,7 @@ router.use(commandCenterRouter);
 router.use(commandCenterDetailRouter);
 router.use(commandCenterV2Router);
 router.use(outsideNetworkRouter);
+router.use(outreachMatchRouter);
 router.use(searchRouter);
 router.use(providersRouter);
 router.use(bookmarksRouter);
