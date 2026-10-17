@@ -1,0 +1,28 @@
+[
+  {
+    "n": "Mayo Clinic Health System – Tomah",
+    "org": "Mayo Clinic Health System",
+    "site": "Mayo Clinic Health System – Tomah",
+    "site_display": "Mayo Clinic Health System – Tomah Clinic",
+    "ft": "Outpatient Clinic",
+    "st": "No Agreement / Unmatched",
+    "co": "United States",
+    "rg": "WI",
+    "cy": "Tomah",
+    "cty": "Monroe",
+    "a": "325 Butts Avenue",
+    "a2": "",
+    "z": "54660",
+    "ph": "608-392-5000",
+    "hr": "Building hours: Monday–Friday, 7:00 AM–5:00 PM (local time).",
+    "sv": [
+      "Family Medicine",
+      "Primary Care",
+      "Laboratory",
+      "Imaging / Radiology"
+    ],
+    "no": "Clinic presence/address confirmed from Mayo Clinic Health System's official Tomah page. This record is a prospective location only: no Occu-Med agreement, employer account, deployment physical capability or employer referrals verified. Do not infer availability from standard primary care services. Official sources: https://www.mayoclinichealthsystem.org/locations/tomah and https://www.mayoclinichealthsystem.org/locations/tomah/services-and-treatments/family-medicine",
+    "source_status": "Official website verified 2026-10-17",
+    "y26": "2026 new prospective site; uncontracted"
+  }
+]
