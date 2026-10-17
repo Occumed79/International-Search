@@ -7,6 +7,7 @@ import { logger } from "../lib/logger";
 
 const DATASET_KEY = "occumed-command-center-rich-v3";
 const DATASET_FILENAME = "OccuMed_Command_Center.html";
+const SUPPLEMENT_FILENAME = "network-provider-additions.json";
 const PROVIDER_BATCH_SIZE = 1_500;
 const INTELLIGENCE_BATCH_SIZE = 4_000;
 
@@ -102,9 +103,10 @@ function extractEmbeddedJson<T>(html: string, variableName: "PAYLOAD" | "AUX_PAY
   return JSON.parse(gunzipSync(Buffer.from(match[1], "base64")).toString("utf8")) as T;
 }
 
-function decodeProviders(html: string): ProviderRecord[] {
-  const rawRows = extractEmbeddedJson<unknown>(html, "PAYLOAD");
-  if (!Array.isArray(rawRows)) throw new Error("PAYLOAD is not an array.");
+function decodeProviders(html: string, additions: unknown[] = []): ProviderRecord[] {
+  const embeddedRows = extractEmbeddedJson<unknown>(html, "PAYLOAD");
+  if (!Array.isArray(embeddedRows)) throw new Error("PAYLOAD is not an array.");
+  const rawRows = [...embeddedRows, ...additions];
   const providers = rawRows.map((raw) => {
     const row = raw as Row;
     const name = clean(row.n || row.site || row.org, 240);
@@ -157,7 +159,14 @@ function decodeProviders(html: string): ProviderRecord[] {
     } satisfies ProviderRecord;
   }).filter((row): row is ProviderRecord => row !== null);
   if (providers.length !== rawRows.length) throw new Error(`Provider validation failed: expected ${rawRows.length}, decoded ${providers.length}.`);
-  return providers;
+  // Bundled imports must not create a second location when the same clinic was
+  // subsequently incorporated into the original source dataset.
+  const canonical = (row: ProviderRecord) =>
+    [row.name, row.country, row.stateRegion, row.city, row.address1]
+      .map((value) => value.toLowerCase().replace(/[^a-z0-9]/g, ""))
+      .join("|");
+  const sourceKeys = new Set(providers.slice(0, embeddedRows.length).map(canonical));
+  return providers.filter((row, index) => index < embeddedRows.length || !sourceKeys.has(canonical(row)));
 }
 
 function decodeAux(html: string): AuxSnapshot {
@@ -428,7 +437,15 @@ export async function bootstrapNetworkData(): Promise<void> {
   const dbPool = pool;
   const datasetPath = resolveDatasetPath();
   const fileBuffer = fs.readFileSync(datasetPath);
-  const sourceHash = createHash("sha256").update(fileBuffer).digest("hex");
+  const supplementPath = path.resolve(path.dirname(datasetPath), SUPPLEMENT_FILENAME);
+  const supplementBuffer = fs.existsSync(supplementPath)
+    ? fs.readFileSync(supplementPath)
+    : Buffer.from("[]", "utf8");
+  const supplementalRows: unknown = JSON.parse(supplementBuffer.toString("utf8"));
+  if (!Array.isArray(supplementalRows)) throw new Error("Supplemental provider dataset must be a JSON array.");
+  // Both source datasets must contribute to refresh detection; the supplement
+  // persists on rebuild instead of being lost when snapshots are replaced.
+  const sourceHash = createHash("sha256").update(fileBuffer).update(supplementBuffer).digest("hex");
   await ensureTables(dbPool);
   if (await current(dbPool, sourceHash)) {
     logger.info({ datasetPath, sourceHash, ...(await liveCounts(dbPool)) }, "Rich Command Center dataset already current in Neon");
@@ -440,7 +457,7 @@ export async function bootstrapNetworkData(): Promise<void> {
   try {
     let providerCount = 0;
     {
-      const providers = decodeProviders(html);
+      const providers = decodeProviders(html, supplementalRows);
       providerCount = providers.length;
       await stageProviders(dbPool, runId, providers);
     }
