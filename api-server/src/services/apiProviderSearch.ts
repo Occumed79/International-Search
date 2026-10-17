@@ -1,4 +1,5 @@
 import { logger } from "../lib/logger";
+import { enrichSharedSearchHits, qualifySearchHitsWithGroq } from "./groqQualification";
 import type { MultiModeParams, ProviderHit } from "./multiModeSearch";
 
 export interface ApiProviderSearchSources {
@@ -232,11 +233,9 @@ async function searchTinyFish(query: string): Promise<RawSearchHit[]> {
       }];
     });
 
-    const fetched = await fetchTinyFishContent(base.map((item) => item.url));
-    return base.map((item) => ({
-      ...item,
-      content: fetched.get(item.url.replace(/\/$/, "").toLowerCase()),
-    }));
+    // Shared enrichment runs after Keen able and TinyFish results are merged,
+    // so both engines' clinic pages can be extracted by TinyFish.
+    return base;
   } catch (err) {
     logger.warn({ err }, "TinyFish provider search failed");
     return [];
@@ -362,20 +361,28 @@ export async function runApiProviderSearch(params: MultiModeParams): Promise<{
     exa = await searchExaFallback(query);
   }
 
-  const merged = dedupeRaw([...primary, ...exa])
-    .slice(0, MAX_RESULTS)
-    .map((hit) => toProviderHit(hit, params));
+  const merged = dedupeRaw([...primary, ...exa]).slice(0, MAX_RESULTS);
+
+  // One bounded TinyFish page-fetch pass covers results from BOTH primary
+  // search engines (plus Exa fallback) rather than only TinyFish's own hits.
+  const enriched = await enrichSharedSearchHits(merged, fetchTinyFishContent);
+
+  // Groq reviews the shared evidence without searching on its own.
+  // No key, malformed reply, rate limit, or outage => original results survive.
+  const qualified = await qualifySearchHitsWithGroq(enriched, query);
+  const results = qualified.map((hit) => toProviderHit(hit, params));
 
   logger.info({
     keenable: keenable.length,
     tinyfish: tinyfish.length,
     exa: exa.length,
     fallbackUsed,
-    merged: merged.length,
+    enriched: enriched.filter((hit) => Boolean(hit.content)).length,
+    merged: results.length,
   }, "API provider search complete");
 
   return {
-    results: merged,
+    results,
     sources: {
       keenable: keenable.length,
       tinyfish: tinyfish.length,
