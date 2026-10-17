@@ -27,6 +27,23 @@ function isGrounded(quote: string, source: string): boolean {
   return quote.length >= 12 && normalize(source).toLowerCase().includes(normalize(quote).toLowerCase());
 }
 
+/** Fetch evidence for candidates from either primary discovery engine. */
+export async function enrichSharedSearchHits<T extends QualificationHit>(
+  hits: T[],
+  fetchContent: (urls: string[]) => Promise<Map<string, string>>,
+): Promise<T[]> {
+  if (!hits.length) return hits;
+  try {
+    const pages = await fetchContent(hits.slice(0, MAX_AI_CANDIDATES).map((hit) => hit.url));
+    return hits.map((hit) => {
+      const page = pages.get(hit.url.replace(/\/$/, "").toLowerCase());
+      return page ? { ...hit, content: page } : hit;
+    });
+  } catch {
+    return hits;
+  }
+}
+
 /** One bounded request, preserving the original results if disabled or unavailable. */
 export async function qualifySearchHitsWithGroq<T extends QualificationHit>(
   hits: T[],
