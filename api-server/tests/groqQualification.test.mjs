@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { qualifySearchHitsWithGroq } from "../src/services/groqQualification.ts";
+import { enrichSharedSearchHits, qualifySearchHitsWithGroq } from "../src/services/groqQualification.ts";
 
 const clinic = (url = "https://sample.example/clinic") => ({
   url, title: "Lincoln Medical Clinic",
@@ -103,4 +103,23 @@ test("AI review is capped at eight candidates per search", async () => {
   assert.equal(count, 8);
   assert.equal(result.length, 12);
   assert.deepEqual(result.slice(8), hits.slice(8));
+});
+
+test("TinyFish extraction shares evidence across both primary engines", async () => {
+  const hits = [
+    { ...clinic(), source: "keenable" },
+    { ...clinic("https://else.example"), source: "tinyfish" },
+  ];
+  let seen = [];
+  const result = await enrichSharedSearchHits(hits, async (urls) => {
+    seen = urls;
+    return new Map([
+      [hits[0].url, "Full page from Keenable source"],
+      [hits[1].url, "Full page from TinyFish source"],
+    ]);
+  });
+  assert.deepEqual(seen, hits.map((hit) => hit.url));
+  assert.equal(result[0].content, "Full page from Keenable source");
+  assert.equal(result[1].content, "Full page from TinyFish source");
+  assert.equal(hits[0].content, undefined);
 });
