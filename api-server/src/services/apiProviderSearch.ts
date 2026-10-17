@@ -1,5 +1,5 @@
 import { logger } from "../lib/logger";
-import { qualifySearchHitsWithGroq } from "./groqQualification";
+import { enrichSharedSearchHits, qualifySearchHitsWithGroq } from "./groqQualification";
 import type { MultiModeParams, ProviderHit } from "./multiModeSearch";
 
 export interface ApiProviderSearchSources {
@@ -365,11 +365,7 @@ export async function runApiProviderSearch(params: MultiModeParams): Promise<{
 
   // One bounded TinyFish page-fetch pass covers results from BOTH primary
   // search engines (plus Exa fallback) rather than only TinyFish's own hits.
-  const fetched = await fetchTinyFishContent(merged.slice(0, 8).map((hit) => hit.url));
-  const enriched = merged.map((hit) => {
-    const content = fetched.get(hit.url.replace(/\/$/, "").toLowerCase());
-    return content ? { ...hit, content } : hit;
-  });
+  const enriched = await enrichSharedSearchHits(merged, fetchTinyFishContent);
 
   // Groq reviews the shared evidence without searching on its own.
   // No key, malformed reply, rate limit, or outage => original results survive.
@@ -381,7 +377,7 @@ export async function runApiProviderSearch(params: MultiModeParams): Promise<{
     tinyfish: tinyfish.length,
     exa: exa.length,
     fallbackUsed,
-    enriched: fetched.size,
+    enriched: enriched.filter((hit) => Boolean(hit.content)).length,
     merged: results.length,
   }, "API provider search complete");
 
